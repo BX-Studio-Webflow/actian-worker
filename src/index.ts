@@ -371,24 +371,24 @@ function getConfig(env: Env, request: Request): Config {
 function validateConfig(config: Config): void {
 	// Validate image quality (check for NaN first)
 	if (isNaN(config.IMAGE_QUALITY) || config.IMAGE_QUALITY < 1 || config.IMAGE_QUALITY > 100) {
-		console.warn(`Invalid IMAGE_QUALITY: ${config.IMAGE_QUALITY}, using default: ${DEFAULT_CONFIG.IMAGE_QUALITY}`);
+		console.error(`Invalid IMAGE_QUALITY: ${config.IMAGE_QUALITY}, using default: ${DEFAULT_CONFIG.IMAGE_QUALITY}`);
 		config.IMAGE_QUALITY = DEFAULT_CONFIG.IMAGE_QUALITY;
 	}
 
 	// Validate cache TTLs (check for NaN first)
 	if (isNaN(config.EDGE_CACHE_TTL) || config.EDGE_CACHE_TTL < 0) {
-		console.warn(`Invalid EDGE_CACHE_TTL: ${config.EDGE_CACHE_TTL}, using default: ${DEFAULT_CONFIG.EDGE_CACHE_TTL}`);
+		console.error(`Invalid EDGE_CACHE_TTL: ${config.EDGE_CACHE_TTL}, using default: ${DEFAULT_CONFIG.EDGE_CACHE_TTL}`);
 		config.EDGE_CACHE_TTL = DEFAULT_CONFIG.EDGE_CACHE_TTL;
 	}
 
 	if (isNaN(config.BROWSER_CACHE_TTL) || config.BROWSER_CACHE_TTL < 0) {
-		console.warn(`Invalid BROWSER_CACHE_TTL: ${config.BROWSER_CACHE_TTL}, using default: ${DEFAULT_CONFIG.BROWSER_CACHE_TTL}`);
+		console.error(`Invalid BROWSER_CACHE_TTL: ${config.BROWSER_CACHE_TTL}, using default: ${DEFAULT_CONFIG.BROWSER_CACHE_TTL}`);
 		config.BROWSER_CACHE_TTL = DEFAULT_CONFIG.BROWSER_CACHE_TTL;
 	}
 
 	// Validate OG image quality (check for NaN first)
 	if (isNaN(config.OG_IMAGE_QUALITY) || config.OG_IMAGE_QUALITY < 1 || config.OG_IMAGE_QUALITY > 100) {
-		console.warn(`Invalid OG_IMAGE_QUALITY: ${config.OG_IMAGE_QUALITY}, using default: ${DEFAULT_CONFIG.OG_IMAGE_QUALITY}`);
+		console.error(`Invalid OG_IMAGE_QUALITY: ${config.OG_IMAGE_QUALITY}, using default: ${DEFAULT_CONFIG.OG_IMAGE_QUALITY}`);
 		config.OG_IMAGE_QUALITY = DEFAULT_CONFIG.OG_IMAGE_QUALITY;
 	}
 
@@ -399,7 +399,7 @@ function validateConfig(config: Config): void {
 
 	// Validate domain format (basic check)
 	if (!/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$/i.test(config.DOMAIN)) {
-		console.warn(`DOMAIN format may be invalid: ${config.DOMAIN}`);
+		console.error(`DOMAIN format may be invalid: ${config.DOMAIN}`);
 	}
 }
 
@@ -1299,7 +1299,7 @@ async function handleAssetProxy(url: URL, config: Config, ctx: ExecutionContext)
 		// This is a sanity check to catch misconfigured origins
 		const isValid = validateAssetContentType(contentTypeLower, ext);
 		if (!isValid) {
-			console.warn(`Content-Type mismatch: Expected ${ext}, got ${contentType} for ${originalUrl}`);
+			console.error(`Content-Type mismatch: Expected ${ext}, got ${contentType} for ${originalUrl}`);
 			// Don't reject - some origins may serve with generic types, but log the warning
 		}
 	}
@@ -1481,7 +1481,7 @@ async function handleOriginalImageProxy(url: URL, config: Config, ctx: Execution
 		responseHeaders.set('Content-Length', contentLength);
 	} else {
 		// If origin doesn't provide Content-Length, log warning but still cache at edge
-		console.warn('Missing Content-Length header from origin');
+		console.error('Missing Content-Length header from origin');
 	}
 
 	responseHeaders.set('Access-Control-Allow-Origin', '*');
