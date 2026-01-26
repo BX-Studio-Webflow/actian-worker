@@ -14,7 +14,7 @@
 		"production": {
 			"name": "webflow-wp-proxy-prod",
 			"vars": {
-				"DOMAIN": "https://www.bxstudio.cloud/",
+				"DOMAIN": "www.bxstudio.cloud",
 				"IMAGE_FORMAT": "auto",
 				"IMAGE_QUALITY": "85",
 				"OG_IMAGE_FORMAT": "jpeg",
@@ -27,7 +27,7 @@
 		"development": {
 			"name": "webflow-wp-proxy-dev",
 			"vars": {
-				"DOMAIN": "https://www.bxstudio.cloud/",
+				"DOMAIN": "www.bxstudio.cloud",
 				"IMAGE_FORMAT": "auto",
 				"IMAGE_QUALITY": "85",
 				"OG_IMAGE_FORMAT": "jpeg",
