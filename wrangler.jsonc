@@ -20,9 +20,10 @@
 				"OG_IMAGE_FORMAT": "jpeg",
 				"OG_IMAGE_QUALITY": "80",
 				"EDGE_CACHE_TTL": "31536000",
-				"BROWSER_CACHE_TTL": "604800",
+				"BROWSER_CACHE_TTL": "15778476",
 				"CATCH_ALL_EXTERNAL": "false",
-				"SITE_ID": "69259def79719995b09e699d"
+				"SITE_ID": "69259def79719995b09e699d",
+				"CSS_OPTIMIZATION": "DEFER",
 			}
 		},
 		"development": {
@@ -34,9 +35,10 @@
 				"OG_IMAGE_FORMAT": "jpeg",
 				"OG_IMAGE_QUALITY": "80",
 				"EDGE_CACHE_TTL": "31536000",
-				"BROWSER_CACHE_TTL": "604800",
+				"BROWSER_CACHE_TTL": "15778476",
 				"CATCH_ALL_EXTERNAL": "false",
-				"SITE_ID": "69259def79719995b09e699d"
+				"SITE_ID": "69259def79719995b09e699d",
+				"CSS_OPTIMIZATION": "DEFER"
 			}
 		}
 	},
