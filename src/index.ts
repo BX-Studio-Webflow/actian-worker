@@ -1191,6 +1191,7 @@ async function handleAssetProxy(url: URL, config: Config, ctx: ExecutionContext)
 	const encodedUrl = url.pathname.slice('/asset-cache/'.length);
 
 	if (!encodedUrl) {
+		console.error('Asset proxy: Missing URL parameter');
 		return errorResponse(400, 'Missing URL parameter');
 	}
 
@@ -1198,12 +1199,14 @@ async function handleAssetProxy(url: URL, config: Config, ctx: ExecutionContext)
 	let originalUrl: string;
 	try {
 		originalUrl = decodeURIComponent(encodedUrl);
-	} catch {
+	} catch (decodeError) {
+		console.error('Asset proxy: Invalid URL encoding:', encodedUrl, (decodeError as Error).message);
 		return errorResponse(400, 'Invalid URL encoding');
 	}
 
 	// Validate URL scheme
 	if (!originalUrl.startsWith('http://') && !originalUrl.startsWith('https://')) {
+		console.error('Asset proxy: Invalid URL scheme - received:', originalUrl, 'from encoded:', encodedUrl);
 		return errorResponse(400, 'Invalid URL scheme');
 	}
 
