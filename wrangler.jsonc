@@ -12,21 +12,31 @@
 	},
 	"env": {
 		"production": {
-			"name": "webflow-wp-proxy",
+			"name": "webflow-wp-proxy-prod",
 			"vars": {
-				"ENVIRONMENT": "production",
-				"WEBFLOW_URL": "https://ogyzgreen.webflow.io/",
-				"OTHER_URL": "https://wordpress.com/",
-			},
+				"DOMAIN": "mwairealty.co.ke",
+				"IMAGE_FORMAT": "auto",
+				"IMAGE_QUALITY": "85",
+				"OG_IMAGE_FORMAT": "jpeg",
+				"OG_IMAGE_QUALITY": "80",
+				"EDGE_CACHE_TTL": "31536000",
+				"BROWSER_CACHE_TTL": "604800",
+				"CATCH_ALL_EXTERNAL": "false"
+			}
 		},
 		"development": {
-			"name": "webflow-wp-proxy",
+			"name": "webflow-wp-proxy-dev",
 			"vars": {
-				"ENVIRONMENT": "development",
-				"WEBFLOW_URL": "https://ogyzgreen.webflow.io/",
-				"OTHER_URL": "https://wordpress.com/",
-			},
-		},
+				"DOMAIN": "mwairealty.co.ke",
+				"IMAGE_FORMAT": "auto",
+				"IMAGE_QUALITY": "85",
+				"OG_IMAGE_FORMAT": "jpeg",
+				"OG_IMAGE_QUALITY": "80",
+				"EDGE_CACHE_TTL": "31536000",
+				"BROWSER_CACHE_TTL": "604800",
+				"CATCH_ALL_EXTERNAL": "false"
+			}
+		}
 	},
 	/**
 	 * Smart Placement
