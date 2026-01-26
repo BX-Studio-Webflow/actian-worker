@@ -119,6 +119,7 @@
 
 interface Env {
 	DOMAIN?: string;
+	SITE_ID?: string;
 	IMAGE_FORMAT?: string;
 	IMAGE_QUALITY?: string;
 	OG_IMAGE_FORMAT?: string;
@@ -130,6 +131,7 @@ interface Env {
 
 interface Config {
 	DOMAIN: string;
+	SITE_ID: string | null;
 	IMAGE_FORMAT: string;
 	IMAGE_QUALITY: number;
 	OG_IMAGE_FORMAT: string;
@@ -250,7 +252,7 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
 
 		// Handle asset proxy requests (CSS, JS, fonts, icons)
 		if (url.pathname.startsWith('/asset-cache/')) {
-			return handleAssetProxy(url, config, ctx);
+			return handleAssetProxy(request, url, config, ctx);
 		}
 
 		// Fetch the original response from origin with caching enabled
@@ -313,6 +315,7 @@ function getConfig(env: Env, request: Request): Config {
 			: DEFAULT_CONFIG.OG_IMAGE_FORMAT;
 		return {
 			DOMAIN: env.DOMAIN,
+			SITE_ID: env.SITE_ID || null,
 			IMAGE_FORMAT: finalImageFormat,
 			IMAGE_QUALITY: imageQuality,
 			OG_IMAGE_FORMAT: finalOgImageFormat,
@@ -355,6 +358,7 @@ function getConfig(env: Env, request: Request): Config {
 
 	return {
 		DOMAIN: domain,
+		SITE_ID: env.SITE_ID || null,
 		IMAGE_FORMAT: finalImageFormat,
 		IMAGE_QUALITY: imageQuality,
 		OG_IMAGE_FORMAT: finalOgImageFormat,
@@ -431,11 +435,18 @@ async function transformHtmlResponse(response: Response, config: Config): Promis
 	// Build domain info for self-reference checks
 	const domainInfo = buildDomainInfo(config.DOMAIN);
 
+	// Get site ID from config (env var) or extract from HTML as fallback
+	let siteId = config.SITE_ID;
+	if (!siteId) {
+		const siteIdMatch = html.match(/data-wf-site=["']([a-f0-9]+)["']/);
+		siteId = siteIdMatch ? siteIdMatch[1] : null;
+	}
+
 	// Transform all image URLs
 	html = transformAllImageUrls(html, config, domainInfo);
 
 	// Transform all asset URLs (CSS, JS, fonts, icons)
-	html = transformAllAssetUrls(html, config, domainInfo);
+	html = transformAllAssetUrls(html, config, domainInfo, siteId);
 
 	return createResponse(html, response);
 }
@@ -706,12 +717,12 @@ function transformSingleUrl(url: string, config: Config, domainInfo: DomainInfo)
 /**
  * Transform all asset URLs in HTML (CSS, JS, fonts, icons)
  */
-function transformAllAssetUrls(html: string, config: Config, domainInfo: DomainInfo): string {
+function transformAllAssetUrls(html: string, config: Config, domainInfo: DomainInfo, siteId: string | null): string {
 	// 1. Transform <link> tags (CSS, favicons)
-	html = transformLinkTags(html, config, domainInfo);
+	html = transformLinkTags(html, config, domainInfo, siteId);
 
 	// 2. Transform <script> tags (JavaScript)
-	html = transformScriptTags(html, config, domainInfo);
+	html = transformScriptTags(html, config, domainInfo, siteId);
 
 	// 3. Transform <meta> tags (OG images, Twitter images)
 	html = transformMetaTags(html, config, domainInfo);
@@ -722,7 +733,7 @@ function transformAllAssetUrls(html: string, config: Config, domainInfo: DomainI
 /**
  * Transform <link> tags (CSS, favicons, etc.)
  */
-function transformLinkTags(html: string, config: Config, domainInfo: DomainInfo): string {
+function transformLinkTags(html: string, config: Config, domainInfo: DomainInfo, siteId: string | null): string {
 	return html.replace(/(<link\b[^>]*\s)(href\s*=\s*)(["'])([^"']*)\3/gi, (match, tagStart, attrName, quote, url) => {
 		// Check if this is a favicon or apple-touch-icon (treat as image)
 		const isFavicon = /rel\s*=\s*["']?(?:shortcut\s+)?icon|apple-touch-icon/gi.test(match);
@@ -733,7 +744,7 @@ function transformLinkTags(html: string, config: Config, domainInfo: DomainInfo)
 			return tagStart + attrName + quote + transformed + quote;
 		}
 		// Transform as asset for CSS, etc.
-		const transformed = transformAssetUrl(url, config, domainInfo);
+		const transformed = transformAssetUrl(url, config, domainInfo, siteId);
 		return tagStart + attrName + quote + transformed + quote;
 	});
 }
@@ -741,9 +752,9 @@ function transformLinkTags(html: string, config: Config, domainInfo: DomainInfo)
 /**
  * Transform <script> tags (JavaScript)
  */
-function transformScriptTags(html: string, config: Config, domainInfo: DomainInfo): string {
+function transformScriptTags(html: string, config: Config, domainInfo: DomainInfo, siteId: string | null): string {
 	return html.replace(/(<script\b[^>]*\s)(src\s*=\s*)(["'])([^"']*)\3/gi, (match, tagStart, attrName, quote, url) => {
-		const transformed = transformAssetUrl(url, config, domainInfo);
+		const transformed = transformAssetUrl(url, config, domainInfo, siteId);
 		return tagStart + attrName + quote + transformed + quote;
 	});
 }
@@ -862,7 +873,7 @@ function transformOgImageUrl(url: string, config: Config, domainInfo: DomainInfo
 /**
  * Transform a single asset URL to use proxy
  */
-function transformAssetUrl(url: string, config: Config, domainInfo: DomainInfo): string {
+function transformAssetUrl(url: string, config: Config, domainInfo: DomainInfo, siteId: string | null): string {
 	// Skip empty or whitespace-only
 	if (!url || !url.trim()) {
 		return url;
@@ -873,8 +884,17 @@ function transformAssetUrl(url: string, config: Config, domainInfo: DomainInfo):
 		return url;
 	}
 
-	// Skip non-HTTP URLs (relative paths, etc.)
+	// Handle chunk files (relative URLs with "chunk" in the name)
 	if (!url.startsWith('http://') && !url.startsWith('https://')) {
+		// If it's a chunk file and we have a site ID, construct the full URL
+		if (url.includes('chunk') && siteId) {
+			// Construct the full Webflow CDN URL
+			const fullUrl = `https://cdn.prod.website-files.com/${siteId}/js/${url}`;
+			// Encode and return the proxied URL
+			const encodedUrl = safeEncodeUrl(fullUrl);
+			return 'https://' + config.DOMAIN + '/asset-cache/' + encodedUrl;
+		}
+		// For other relative URLs, return as-is
 		return url;
 	}
 
@@ -1186,7 +1206,7 @@ async function handleAvifProxy(url: URL, config: Config, ctx: ExecutionContext):
  * - CORS headers for cross-origin usage
  * - Global distribution via Cloudflare edge
  */
-async function handleAssetProxy(url: URL, config: Config, ctx: ExecutionContext): Promise<Response> {
+async function handleAssetProxy(request: Request, url: URL, config: Config, ctx: ExecutionContext): Promise<Response> {
 	// Extract the encoded URL from the path
 	const encodedUrl = url.pathname.slice('/asset-cache/'.length);
 
@@ -1204,10 +1224,27 @@ async function handleAssetProxy(url: URL, config: Config, ctx: ExecutionContext)
 		return errorResponse(400, 'Invalid URL encoding');
 	}
 
-	// Validate URL scheme
+	// Validate URL scheme and handle chunk files
 	if (!originalUrl.startsWith('http://') && !originalUrl.startsWith('https://')) {
-		console.error('Asset proxy: Invalid URL scheme - received:', originalUrl, 'from encoded:', encodedUrl);
-		return errorResponse(400, 'Invalid URL scheme');
+		// If the filename includes "chunk", construct the proper URL
+		if (originalUrl.includes('chunk')) {
+			// Use site ID from config, or try to extract from Referer as fallback
+			const siteId = config.SITE_ID;
+
+			if (!siteId) {
+				return errorResponse(400, 'Invalid URL scheme - chunk file requires SITE_ID environment variable');
+			}
+
+			if (siteId) {
+				originalUrl = `https://cdn.prod.website-files.com/${siteId}/js/${originalUrl}`;
+			} else {
+				console.error('Asset proxy: Could not extract site ID from config or Referer for chunk file:', originalUrl);
+				return errorResponse(400, 'Invalid URL scheme - chunk file requires SITE_ID environment variable');
+			}
+		} else {
+			console.error('Asset proxy: Invalid URL scheme - received:', originalUrl, 'from encoded:', encodedUrl);
+			return errorResponse(400, 'Invalid URL scheme');
+		}
 	}
 
 	// Security: Validate origin if not in catch-all mode

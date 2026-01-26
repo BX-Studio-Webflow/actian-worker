@@ -21,7 +21,8 @@
 				"OG_IMAGE_QUALITY": "80",
 				"EDGE_CACHE_TTL": "31536000",
 				"BROWSER_CACHE_TTL": "604800",
-				"CATCH_ALL_EXTERNAL": "false"
+				"CATCH_ALL_EXTERNAL": "false",
+				"SITE_ID": "69259def79719995b09e699d"
 			}
 		},
 		"development": {
@@ -34,7 +35,8 @@
 				"OG_IMAGE_QUALITY": "80",
 				"EDGE_CACHE_TTL": "31536000",
 				"BROWSER_CACHE_TTL": "604800",
-				"CATCH_ALL_EXTERNAL": "false"
+				"CATCH_ALL_EXTERNAL": "false",
+				"SITE_ID": "69259def79719995b09e699d"
 			}
 		}
 	},
