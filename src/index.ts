@@ -128,7 +128,7 @@ interface Env {
 	BROWSER_CACHE_TTL?: string;
 	CATCH_ALL_EXTERNAL?: string;
 	PURIFIED_CSS_ENABLED?: string;
-	PURIFIED_CSS?: R2Bucket; // R2 bucket for purified CSS files
+	MINIFIED_CSS_LINK?: string; // URL to purified/minified CSS file
 }
 
 interface Config {
@@ -142,6 +142,7 @@ interface Config {
 	BROWSER_CACHE_TTL: number;
 	CATCH_ALL_EXTERNAL: boolean;
 	PURIFIED_CSS_ENABLED: boolean;
+	MINIFIED_CSS_LINK: string | null;
 }
 
 interface DomainInfo {
@@ -213,17 +214,11 @@ export default {
 	},
 };
 
-// Store env globally for use in nested functions
-let globalEnv: Env;
-
 // ============================================
 // MAIN REQUEST HANDLER
 // ============================================
 
 async function handleRequest(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-	// Store env globally for R2 access
-	globalEnv = env;
-
 	try {
 		// Get configuration from environment variables with defaults
 		const config = getConfig(env, request);
@@ -262,11 +257,6 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
 		// Handle asset proxy requests (CSS, JS, fonts, icons)
 		if (url.pathname.startsWith('/asset-cache/')) {
 			return handleAssetProxy(request, url, config, ctx);
-		}
-
-		// Handle purified CSS requests from R2
-		if (url.pathname.startsWith('/purified-css/')) {
-			return handlePurifiedCssRequest(url, config, env);
 		}
 
 		// Fetch the original response from origin with caching enabled
@@ -338,6 +328,7 @@ function getConfig(env: Env, request: Request): Config {
 			BROWSER_CACHE_TTL: browserCacheTtl,
 			CATCH_ALL_EXTERNAL: catchAllExternal,
 			PURIFIED_CSS_ENABLED: env.PURIFIED_CSS_ENABLED === 'true',
+			MINIFIED_CSS_LINK: env.MINIFIED_CSS_LINK || null,
 		};
 	}
 
@@ -382,6 +373,7 @@ function getConfig(env: Env, request: Request): Config {
 		BROWSER_CACHE_TTL: browserCacheTtl,
 		CATCH_ALL_EXTERNAL: catchAllExternal,
 		PURIFIED_CSS_ENABLED: env.PURIFIED_CSS_ENABLED === 'true',
+		MINIFIED_CSS_LINK: env.MINIFIED_CSS_LINK || null,
 	};
 }
 
@@ -464,9 +456,9 @@ async function transformHtmlResponse(response: Response, config: Config): Promis
 	// Transform all asset URLs (CSS, JS, fonts, icons)
 	html = transformAllAssetUrls(html, config, domainInfo, siteId);
 
-	// Replace Webflow CSS with purified CSS from R2 (if enabled)
-	if (config.PURIFIED_CSS_ENABLED && siteId) {
-		html = await replaceWithPurifiedCss(html, config, siteId);
+	// Preload all CSS links in header to eliminate render-blocking (if enabled)
+	if (config.PURIFIED_CSS_ENABLED) {
+		html = preloadCssLinks(html);
 	}
 
 	return createResponse(html, response);
@@ -1562,114 +1554,39 @@ async function handleOriginalImageProxy(url: URL, config: Config, _ctx: Executio
 // ============================================
 
 /**
- * Replace Webflow CSS links with purified CSS from R2
+ * Preload all CSS links in the header to eliminate render-blocking
  *
  * This function:
- * 1. Finds Webflow CSS links in the HTML
- * 2. Extracts the page path from the request URL
- * 3. Looks for a matching purified CSS file in R2
- * 4. If found, replaces the Webflow CSS link with a link to purified CSS
+ * 1. Finds all CSS stylesheet links in the HTML
+ * 2. Converts them to use rel="preload" with onload handler
+ * 3. Adds noscript fallback for users without JavaScript
  *
- * R2 File Naming Convention:
- * - Homepage: /purified-css/index.css
- * - Other pages: /purified-css/[page-path].css (e.g., /purified-css/about.css)
- *
- * Upload purified CSS files to R2 bucket with these names.
+ * Uses rel="preload" to fetch CSS early without render-blocking, then loads as stylesheet.
  */
-async function replaceWithPurifiedCss(html: string, config: Config, _siteId: string): Promise<string> {
-	// Check if R2 bucket is available
-	if (!globalEnv.PURIFIED_CSS) {
-		return html;
-	}
+function preloadCssLinks(html: string): string {
+	// Match all CSS stylesheet links (both Webflow and proxied)
+	const cssLinkRegex = /<link([^>]*)rel=["']stylesheet["']([^>]*)href=["']([^"']+\.css[^"']*)["']([^>]*)>/gi;
+	const cssLinkRegex2 = /<link([^>]*)href=["']([^"']+\.css[^"']*)["']([^>]*)rel=["']stylesheet["']([^>]*)>/gi;
 
-	// Extract the current page path from the HTML (look for canonical URL)
-	const canonicalMatch = html.match(/<link[^>]*rel=["']canonical["'][^>]*href=["']([^"']+)["']/i);
-	let pagePath = 'index'; // Default to index for homepage
-
-	if (canonicalMatch) {
-		try {
-			const canonicalUrl = new URL(canonicalMatch[1]);
-			// Get path without leading/trailing slashes, default to 'index'
-			pagePath = canonicalUrl.pathname.replace(/^\/|\/$|\.[^/.]+$/g, '') || 'index';
-		} catch {
-			// Invalid canonical URL, use default
+	// Replace stylesheet links with preload pattern
+	html = html.replace(cssLinkRegex, (_match, before1, before2, href, after) => {
+		// Skip if already a preload
+		if (before1.includes('preload') || before2.includes('preload') || after.includes('preload')) {
+			return _match;
 		}
-	}
+		return `<link rel="preload" href="${href}" as="style" onload="this.onload=null;this.rel='stylesheet'"${before1}${before2}${after}>
+<noscript><link rel="stylesheet" href="${href}"></noscript>`;
+	});
 
-	// Construct R2 key for the purified CSS file
-	const r2Key = `${pagePath}.css`;
-
-	// Check if purified CSS exists in R2
-	const r2Object = await globalEnv.PURIFIED_CSS.head(r2Key);
-
-	if (!r2Object) {
-		// No purified CSS for this page, return HTML unchanged
-		return html;
-	}
-
-	// Build the purified CSS URL
-	const purifiedCssUrl = `https://${config.DOMAIN}/purified-css/${r2Key}`;
-
-	// Find and replace the Webflow CSS link
-	// Match CSS links from Webflow CDN domains
-	const webflowCssRegex =
-		/<link[^>]*href=["'](https:\/\/(?:assets-global\.website-files\.com|assets\.website-files\.com|cdn\.prod\.website-files\.com)\/[^"']*\/css\/[^"']*\.css)["'][^>]*>/gi;
-
-	let cssReplaced = false;
-	html = html.replace(webflowCssRegex, (_match) => {
-		if (!cssReplaced) {
-			// Replace first Webflow CSS with purified CSS
-			cssReplaced = true;
-			return `<link rel="stylesheet" href="${purifiedCssUrl}">`;
+	// Handle alternate order (href before rel)
+	html = html.replace(cssLinkRegex2, (_match, before1, href, before2, after) => {
+		// Skip if already a preload
+		if (before1.includes('preload') || before2.includes('preload') || after.includes('preload')) {
+			return _match;
 		}
-		// Remove additional Webflow CSS links (purified CSS contains all needed styles)
-		return '';
+		return `<link rel="preload" href="${href}" as="style" onload="this.onload=null;this.rel='stylesheet'"${before1}${before2}${after}>
+<noscript><link rel="stylesheet" href="${href}"></noscript>`;
 	});
 
 	return html;
-}
-
-/**
- * Handle requests for purified CSS files from R2
- *
- * Route: /purified-css/{filename}.css
- *
- * This serves manually uploaded purified CSS files from R2 bucket.
- */
-async function handlePurifiedCssRequest(url: URL, config: Config, env: Env): Promise<Response> {
-	// Check if R2 bucket is available
-	if (!env.PURIFIED_CSS) {
-		return errorResponse(503, 'Purified CSS storage not configured');
-	}
-
-	// Extract the CSS filename from the path
-	const cssPath = url.pathname.slice('/purified-css/'.length);
-
-	if (!cssPath || !cssPath.endsWith('.css')) {
-		return errorResponse(400, 'Invalid CSS path');
-	}
-
-	// Get the CSS file from R2
-	const r2Object = await env.PURIFIED_CSS.get(cssPath);
-
-	if (!r2Object) {
-		return errorResponse(404, 'Purified CSS file not found');
-	}
-
-	// Build response headers with caching
-	const responseHeaders = new Headers();
-	responseHeaders.set('Content-Type', 'text/css; charset=utf-8');
-	responseHeaders.set('Cache-Control', `public, s-maxage=${config.EDGE_CACHE_TTL}, max-age=${config.BROWSER_CACHE_TTL}, immutable`);
-	responseHeaders.set('Access-Control-Allow-Origin', '*');
-	responseHeaders.set('X-Purified-CSS', 'true');
-
-	// Include etag if available
-	if (r2Object.etag) {
-		responseHeaders.set('ETag', r2Object.etag);
-	}
-
-	return new Response(r2Object.body, {
-		status: 200,
-		headers: responseHeaders,
-	});
 }
