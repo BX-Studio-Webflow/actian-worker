@@ -127,6 +127,8 @@ interface Env {
 	EDGE_CACHE_TTL?: string;
 	BROWSER_CACHE_TTL?: string;
 	CATCH_ALL_EXTERNAL?: string;
+	PURIFIED_CSS_ENABLED?: string;
+	PURIFIED_CSS?: R2Bucket; // R2 bucket for purified CSS files
 }
 
 interface Config {
@@ -139,6 +141,7 @@ interface Config {
 	EDGE_CACHE_TTL: number;
 	BROWSER_CACHE_TTL: number;
 	CATCH_ALL_EXTERNAL: boolean;
+	PURIFIED_CSS_ENABLED: boolean;
 }
 
 interface DomainInfo {
@@ -210,11 +213,17 @@ export default {
 	},
 };
 
+// Store env globally for use in nested functions
+let globalEnv: Env;
+
 // ============================================
 // MAIN REQUEST HANDLER
 // ============================================
 
 async function handleRequest(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+	// Store env globally for R2 access
+	globalEnv = env;
+
 	try {
 		// Get configuration from environment variables with defaults
 		const config = getConfig(env, request);
@@ -253,6 +262,11 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
 		// Handle asset proxy requests (CSS, JS, fonts, icons)
 		if (url.pathname.startsWith('/asset-cache/')) {
 			return handleAssetProxy(request, url, config, ctx);
+		}
+
+		// Handle purified CSS requests from R2
+		if (url.pathname.startsWith('/purified-css/')) {
+			return handlePurifiedCssRequest(url, config, env);
 		}
 
 		// Fetch the original response from origin with caching enabled
@@ -323,6 +337,7 @@ function getConfig(env: Env, request: Request): Config {
 			EDGE_CACHE_TTL: edgeCacheTtl,
 			BROWSER_CACHE_TTL: browserCacheTtl,
 			CATCH_ALL_EXTERNAL: catchAllExternal,
+			PURIFIED_CSS_ENABLED: env.PURIFIED_CSS_ENABLED === 'true',
 		};
 	}
 
@@ -366,6 +381,7 @@ function getConfig(env: Env, request: Request): Config {
 		EDGE_CACHE_TTL: edgeCacheTtl,
 		BROWSER_CACHE_TTL: browserCacheTtl,
 		CATCH_ALL_EXTERNAL: catchAllExternal,
+		PURIFIED_CSS_ENABLED: env.PURIFIED_CSS_ENABLED === 'true',
 	};
 }
 
@@ -447,6 +463,11 @@ async function transformHtmlResponse(response: Response, config: Config): Promis
 
 	// Transform all asset URLs (CSS, JS, fonts, icons)
 	html = transformAllAssetUrls(html, config, domainInfo, siteId);
+
+	// Replace Webflow CSS with purified CSS from R2 (if enabled)
+	if (config.PURIFIED_CSS_ENABLED && siteId) {
+		html = await replaceWithPurifiedCss(html, config, siteId);
+	}
 
 	return createResponse(html, response);
 }
@@ -1117,7 +1138,7 @@ async function handleAvifProxy(url: URL, config: Config, ctx: ExecutionContext):
 		}
 	} catch (e) {
 		// Cache API not available (e.g., on workers.dev subdomain)
-		console.log('Cache unavailable:', (e as Error).message);
+		console.error('Cache unavailable:', (e as Error).message);
 		cache = null;
 	}
 
@@ -1283,7 +1304,7 @@ async function handleAssetProxy(request: Request, url: URL, config: Config, ctx:
 		}
 	} catch (e) {
 		// Cache API not available (e.g., on workers.dev subdomain)
-		console.log('Cache unavailable:', (e as Error).message);
+		console.error('Cache unavailable:', (e as Error).message);
 		cache = null;
 	}
 
@@ -1439,8 +1460,7 @@ function handleCorsPreflight(): Response {
  * NOTE: Cache Reserve is not available with O2O proxying (Webflow uses O2O).
  * All images cache at Cloudflare edge with 1-year TTL for optimal performance.
  */
-async function handleOriginalImageProxy(url: URL, config: Config, ctx: ExecutionContext): Promise<Response> {
-	console.log(ctx.props);
+async function handleOriginalImageProxy(url: URL, config: Config, _ctx: ExecutionContext): Promise<Response> {
 	// Extract the encoded URL from the path
 	const encodedUrl = url.pathname.slice('/img-original/'.length);
 
@@ -1535,4 +1555,121 @@ async function handleOriginalImageProxy(url: URL, config: Config, ctx: Execution
 	});
 
 	return proxyResponse;
+}
+
+// ============================================
+// PURIFIED CSS (R2-based)
+// ============================================
+
+/**
+ * Replace Webflow CSS links with purified CSS from R2
+ *
+ * This function:
+ * 1. Finds Webflow CSS links in the HTML
+ * 2. Extracts the page path from the request URL
+ * 3. Looks for a matching purified CSS file in R2
+ * 4. If found, replaces the Webflow CSS link with a link to purified CSS
+ *
+ * R2 File Naming Convention:
+ * - Homepage: /purified-css/index.css
+ * - Other pages: /purified-css/[page-path].css (e.g., /purified-css/about.css)
+ *
+ * Upload purified CSS files to R2 bucket with these names.
+ */
+async function replaceWithPurifiedCss(html: string, config: Config, _siteId: string): Promise<string> {
+	// Check if R2 bucket is available
+	if (!globalEnv.PURIFIED_CSS) {
+		return html;
+	}
+
+	// Extract the current page path from the HTML (look for canonical URL)
+	const canonicalMatch = html.match(/<link[^>]*rel=["']canonical["'][^>]*href=["']([^"']+)["']/i);
+	let pagePath = 'index'; // Default to index for homepage
+
+	if (canonicalMatch) {
+		try {
+			const canonicalUrl = new URL(canonicalMatch[1]);
+			// Get path without leading/trailing slashes, default to 'index'
+			pagePath = canonicalUrl.pathname.replace(/^\/|\/$|\.[^/.]+$/g, '') || 'index';
+		} catch {
+			// Invalid canonical URL, use default
+		}
+	}
+
+	// Construct R2 key for the purified CSS file
+	const r2Key = `${pagePath}.css`;
+
+	// Check if purified CSS exists in R2
+	const r2Object = await globalEnv.PURIFIED_CSS.head(r2Key);
+
+	if (!r2Object) {
+		// No purified CSS for this page, return HTML unchanged
+		return html;
+	}
+
+	// Build the purified CSS URL
+	const purifiedCssUrl = `https://${config.DOMAIN}/purified-css/${r2Key}`;
+
+	// Find and replace the Webflow CSS link
+	// Match CSS links from Webflow CDN domains
+	const webflowCssRegex =
+		/<link[^>]*href=["'](https:\/\/(?:assets-global\.website-files\.com|assets\.website-files\.com|cdn\.prod\.website-files\.com)\/[^"']*\/css\/[^"']*\.css)["'][^>]*>/gi;
+
+	let cssReplaced = false;
+	html = html.replace(webflowCssRegex, (_match) => {
+		if (!cssReplaced) {
+			// Replace first Webflow CSS with purified CSS
+			cssReplaced = true;
+			return `<link rel="stylesheet" href="${purifiedCssUrl}">`;
+		}
+		// Remove additional Webflow CSS links (purified CSS contains all needed styles)
+		return '';
+	});
+
+	return html;
+}
+
+/**
+ * Handle requests for purified CSS files from R2
+ *
+ * Route: /purified-css/{filename}.css
+ *
+ * This serves manually uploaded purified CSS files from R2 bucket.
+ */
+async function handlePurifiedCssRequest(url: URL, config: Config, env: Env): Promise<Response> {
+	// Check if R2 bucket is available
+	if (!env.PURIFIED_CSS) {
+		return errorResponse(503, 'Purified CSS storage not configured');
+	}
+
+	// Extract the CSS filename from the path
+	const cssPath = url.pathname.slice('/purified-css/'.length);
+
+	if (!cssPath || !cssPath.endsWith('.css')) {
+		return errorResponse(400, 'Invalid CSS path');
+	}
+
+	// Get the CSS file from R2
+	const r2Object = await env.PURIFIED_CSS.get(cssPath);
+
+	if (!r2Object) {
+		return errorResponse(404, 'Purified CSS file not found');
+	}
+
+	// Build response headers with caching
+	const responseHeaders = new Headers();
+	responseHeaders.set('Content-Type', 'text/css; charset=utf-8');
+	responseHeaders.set('Cache-Control', `public, s-maxage=${config.EDGE_CACHE_TTL}, max-age=${config.BROWSER_CACHE_TTL}, immutable`);
+	responseHeaders.set('Access-Control-Allow-Origin', '*');
+	responseHeaders.set('X-Purified-CSS', 'true');
+
+	// Include etag if available
+	if (r2Object.etag) {
+		responseHeaders.set('ETag', r2Object.etag);
+	}
+
+	return new Response(r2Object.body, {
+		status: 200,
+		headers: responseHeaders,
+	});
 }

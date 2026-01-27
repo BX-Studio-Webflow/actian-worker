@@ -10,6 +10,12 @@
 	"observability": {
 		"enabled": true
 	},
+	"r2_buckets": [
+		{
+			"binding": "PURIFIED_CSS",
+			"bucket_name": "purified-css"
+		}
+	],
 	"env": {
 		"production": {
 			"name": "webflow-wp-proxy-prod",
@@ -23,8 +29,14 @@
 				"BROWSER_CACHE_TTL": "15778476",
 				"CATCH_ALL_EXTERNAL": "false",
 				"SITE_ID": "69259def79719995b09e699d",
-				"CSS_OPTIMIZATION": "DEFER",
-			}
+				"PURIFIED_CSS_ENABLED": "true"
+			},
+			"r2_buckets": [
+				{
+					"binding": "PURIFIED_CSS",
+					"bucket_name": "purified-css-prod"
+				}
+			]
 		},
 		"development": {
 			"name": "webflow-wp-proxy-dev",
@@ -38,9 +50,14 @@
 				"BROWSER_CACHE_TTL": "15778476",
 				"CATCH_ALL_EXTERNAL": "false",
 				"SITE_ID": "69259def79719995b09e699d",
-				"CSS_OPTIMIZATION": "DEFER"
-			}
+				"PURIFIED_CSS_ENABLED": "false"
+			},
+			"r2_buckets": [
+				{
+					"binding": "PURIFIED_CSS",
+					"bucket_name": "purified-css-dev"
+				}
+			]
 		}
-	},
-	
+	}
 }
