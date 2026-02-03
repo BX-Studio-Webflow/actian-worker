@@ -127,6 +127,9 @@ interface Env {
 	EDGE_CACHE_TTL?: string;
 	BROWSER_CACHE_TTL?: string;
 	CATCH_ALL_EXTERNAL?: string;
+	PURIFIED_CSS_ENABLED?: string;
+	MINIFIED_CSS_LINK?: string; // URL to purified/minified CSS file
+	PROGRESSIVE_SECTIONS_ENABLED?: string;
 }
 
 interface Config {
@@ -139,6 +142,9 @@ interface Config {
 	EDGE_CACHE_TTL: number;
 	BROWSER_CACHE_TTL: number;
 	CATCH_ALL_EXTERNAL: boolean;
+	PURIFIED_CSS_ENABLED: boolean;
+	MINIFIED_CSS_LINK: string | null;
+	PROGRESSIVE_SECTIONS_ENABLED: boolean;
 }
 
 interface DomainInfo {
@@ -146,6 +152,11 @@ interface DomainInfo {
 	baseDomain: string;
 	withWww: string;
 	withoutWww: string;
+}
+
+interface ExtractedSection {
+	id: string;
+	html: string;
 }
 
 // ============================================
@@ -198,6 +209,49 @@ const EXCLUDED_DOMAINS = [
 	'www.gstatic.com',
 	'fonts.googleapis.com',
 	'fonts.gstatic.com',
+];
+
+// Bot user agents (for serving full HTML to crawlers)
+const BOT_USER_AGENTS = [
+	'googlebot',
+	'bingbot',
+	'slurp', // Yahoo
+	'duckduckbot',
+	'baiduspider',
+	'yandexbot',
+	'sogou',
+	'exabot',
+	'facebot',
+	'facebookexternalhit',
+	'twitterbot',
+	'rogerbot',
+	'linkedinbot',
+	'embedly',
+	'quora link preview',
+	'showyoubot',
+	'outbrain',
+	'pinterest',
+	'slackbot',
+	'vkshare',
+	'w3c_validator',
+	'whatsapp',
+	'redditbot',
+	'applebot',
+	'flipboard',
+	'tumblr',
+	'bitlybot',
+	'skypeuripreview',
+	'nuzzel',
+	'discordbot',
+	'qwantify',
+	'pinterestbot',
+	'bitrix',
+	'lighthouse', // Google Lighthouse
+	'chrome-lighthouse',
+	'gtmetrix',
+	'pingdom',
+	'headlesschrome',
+	'phantomjs',
 ];
 
 // ============================================
@@ -255,13 +309,26 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
 			return handleAssetProxy(request, url, config, ctx);
 		}
 
+		// Handle section requests for progressive loading
+		if (url.pathname.startsWith('/section/')) {
+			return handleSectionRequest(url, config, ctx);
+		}
+
 		// Fetch the original response from origin with caching enabled
-		// Use cf.cacheEverything to leverage Cloudflare's edge cache
+		// When progressive sections are enabled, don't cache the main HTML (only cache sections)
+		// Otherwise, use cf.cacheEverything to leverage Cloudflare's edge cache
 		const response = await fetch(request, {
-			cf: {
-				cacheEverything: true,
-				cacheTtl: config.EDGE_CACHE_TTL,
-			},
+			cf: config.PROGRESSIVE_SECTIONS_ENABLED
+				? {
+						// No caching for main HTML when sections are extracted
+						cacheTtl: 0,
+						cacheEverything: false,
+					}
+				: {
+						// Normal caching when progressive sections disabled
+						cacheEverything: true,
+						cacheTtl: config.EDGE_CACHE_TTL,
+					},
 		});
 
 		// Only transform HTML responses
@@ -271,7 +338,7 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
 		}
 
 		// Transform image and asset URLs in HTML
-		return transformHtmlResponse(response, config);
+		return transformHtmlResponse(response, config, ctx, request);
 	} catch (error) {
 		// On any error, fail open - return original request
 		console.error('Worker error:', (error as Error).message, (error as Error).stack);
@@ -323,6 +390,9 @@ function getConfig(env: Env, request: Request): Config {
 			EDGE_CACHE_TTL: edgeCacheTtl,
 			BROWSER_CACHE_TTL: browserCacheTtl,
 			CATCH_ALL_EXTERNAL: catchAllExternal,
+			PURIFIED_CSS_ENABLED: env.PURIFIED_CSS_ENABLED === 'true',
+			MINIFIED_CSS_LINK: env.MINIFIED_CSS_LINK || null,
+			PROGRESSIVE_SECTIONS_ENABLED: env.PROGRESSIVE_SECTIONS_ENABLED === 'true',
 		};
 	}
 
@@ -366,6 +436,9 @@ function getConfig(env: Env, request: Request): Config {
 		EDGE_CACHE_TTL: edgeCacheTtl,
 		BROWSER_CACHE_TTL: browserCacheTtl,
 		CATCH_ALL_EXTERNAL: catchAllExternal,
+		PURIFIED_CSS_ENABLED: env.PURIFIED_CSS_ENABLED === 'true',
+		MINIFIED_CSS_LINK: env.MINIFIED_CSS_LINK || null,
+		PROGRESSIVE_SECTIONS_ENABLED: env.PROGRESSIVE_SECTIONS_ENABLED === 'true',
 	};
 }
 
@@ -414,7 +487,7 @@ function validateConfig(config: Config): void {
 /**
  * Transform HTML response to rewrite image and asset URLs
  */
-async function transformHtmlResponse(response: Response, config: Config): Promise<Response> {
+async function transformHtmlResponse(response: Response, config: Config, ctx: ExecutionContext, request: Request): Promise<Response> {
 	// Clone response before reading (body can only be read once)
 	const responseClone = response.clone();
 
@@ -426,6 +499,9 @@ async function transformHtmlResponse(response: Response, config: Config): Promis
 		console.error('Failed to read response text:', (textError as Error).message);
 		return responseClone;
 	}
+
+	// Check if request is from a bot
+	const isBot = isBotRequest(request);
 
 	// Quick check - any Webflow CDN assets worth processing?
 	if (!hasWebflowAssets(html, config)) {
@@ -447,6 +523,24 @@ async function transformHtmlResponse(response: Response, config: Config): Promis
 
 	// Transform all asset URLs (CSS, JS, fonts, icons)
 	html = transformAllAssetUrls(html, config, domainInfo, siteId);
+
+	// Progressive section loading (if enabled and not a bot)
+	// Bots get full HTML for proper SEO indexing
+	if (config.PROGRESSIVE_SECTIONS_ENABLED && !isBot) {
+		try {
+			const { html: modifiedHtml, sections } = await extractAndCacheSections(html, config, ctx, response.url);
+			html = modifiedHtml;
+
+			// Inject loader script if sections were extracted
+			if (sections.length > 0) {
+				const sectionIds = sections.map((s) => s.id);
+				html = injectSectionLoaderScript(html, sectionIds);
+			}
+		} catch (sectionError) {
+			console.error('Section extraction error:', (sectionError as Error).message);
+			// Continue with unmodified HTML on error
+		}
+	}
 
 	return createResponse(html, response);
 }
@@ -519,6 +613,19 @@ function isOwnDomain(hostname: string, domainInfo: DomainInfo): boolean {
 	}
 
 	return false;
+}
+
+/**
+ * Check if request is from a bot/crawler
+ */
+function isBotRequest(request: Request): boolean {
+	const userAgent = request.headers.get('User-Agent');
+	if (!userAgent) {
+		return false;
+	}
+
+	const lowerUA = userAgent.toLowerCase();
+	return BOT_USER_AGENTS.some((botAgent) => lowerUA.includes(botAgent));
 }
 
 /**
@@ -1117,7 +1224,7 @@ async function handleAvifProxy(url: URL, config: Config, ctx: ExecutionContext):
 		}
 	} catch (e) {
 		// Cache API not available (e.g., on workers.dev subdomain)
-		console.log('Cache unavailable:', (e as Error).message);
+		console.error('Cache unavailable:', (e as Error).message);
 		cache = null;
 	}
 
@@ -1283,7 +1390,7 @@ async function handleAssetProxy(request: Request, url: URL, config: Config, ctx:
 		}
 	} catch (e) {
 		// Cache API not available (e.g., on workers.dev subdomain)
-		console.log('Cache unavailable:', (e as Error).message);
+		console.error('Cache unavailable:', (e as Error).message);
 		cache = null;
 	}
 
@@ -1439,8 +1546,7 @@ function handleCorsPreflight(): Response {
  * NOTE: Cache Reserve is not available with O2O proxying (Webflow uses O2O).
  * All images cache at Cloudflare edge with 1-year TTL for optimal performance.
  */
-async function handleOriginalImageProxy(url: URL, config: Config, ctx: ExecutionContext): Promise<Response> {
-	console.log(ctx.props);
+async function handleOriginalImageProxy(url: URL, config: Config, _ctx: ExecutionContext): Promise<Response> {
 	// Extract the encoded URL from the path
 	const encodedUrl = url.pathname.slice('/img-original/'.length);
 
@@ -1535,4 +1641,217 @@ async function handleOriginalImageProxy(url: URL, config: Config, ctx: Execution
 	});
 
 	return proxyResponse;
+}
+
+// ============================================
+// PROGRESSIVE SECTION LOADING
+// ============================================
+
+/**
+ * Handle requests for individual sections
+ */
+async function handleSectionRequest(url: URL, _config: Config, _ctx: ExecutionContext): Promise<Response> {
+	const sectionId = url.pathname.slice('/section/'.length);
+
+	if (!sectionId || !/^\d+$/.test(sectionId)) {
+		return errorResponse(400, 'Invalid section ID');
+	}
+
+	// Try to get from cache first
+	const cacheKey = new Request(url.toString(), { method: 'GET' });
+	let cache: Cache | null = null;
+
+	try {
+		cache = caches.default;
+		const cachedResponse = await cache.match(cacheKey);
+
+		if (cachedResponse) {
+			const headers = new Headers(cachedResponse.headers);
+			headers.set('X-Cache', 'HIT');
+			return new Response(cachedResponse.body, {
+				status: cachedResponse.status,
+				headers: headers,
+			});
+		}
+	} catch (e) {
+		console.error('Cache unavailable:', (e as Error).message);
+		cache = null;
+	}
+
+	return errorResponse(404, 'Section not found');
+}
+
+/**
+ * Extract sections with optimised attribute and cache them separately
+ */
+async function extractAndCacheSections(
+	html: string,
+	config: Config,
+	ctx: ExecutionContext,
+	requestUrl: string,
+): Promise<{ html: string; sections: ExtractedSection[] }> {
+	const sectionsToStream: ExtractedSection[] = [];
+	const sectionRegex = /<section([^>]*)>([\s\S]*?)<\/section>/gi;
+
+	let sectionCounter = 0;
+	let match;
+	while ((match = sectionRegex.exec(html)) !== null) {
+		const sectionAttrs = match[1];
+		const fullSection = match[0];
+
+		// Check if this section has optimised="none"
+		const hasDontStream = /optimised=["']none["']/i.test(sectionAttrs);
+
+		// Only extract sections that should be streamed (don't have none)
+		if (!hasDontStream) {
+			sectionCounter++;
+			sectionsToStream.push({
+				id: sectionCounter.toString(),
+				html: fullSection,
+			});
+		}
+	}
+
+	// Cache each section that will be streamed
+	if (ctx && ctx.waitUntil) {
+		for (const section of sectionsToStream) {
+			const sectionUrl = new URL(`/section/${section.id}`, requestUrl);
+			const cacheKey = new Request(sectionUrl.toString(), { method: 'GET' });
+
+			const headers = new Headers();
+			headers.set('Content-Type', 'text/html; charset=utf-8');
+			headers.set('Cache-Control', `public, s-maxage=${config.EDGE_CACHE_TTL}, max-age=${config.BROWSER_CACHE_TTL}, immutable`);
+			headers.set('Access-Control-Allow-Origin', '*');
+
+			const response = new Response(section.html, {
+				status: 200,
+				headers: headers,
+			});
+
+			ctx.waitUntil(
+				caches.default.put(cacheKey, response).catch((err) => {
+					console.error(`Cache put error for section ${section.id}:`, (err as Error).message);
+				}),
+			);
+		}
+	}
+
+	// Replace streaming sections with placeholders
+	let modifiedHtml = html;
+	for (const section of sectionsToStream) {
+		const placeholder = `<div id="section-placeholder-${section.id}" data-section-id="${section.id}" class="section-placeholder" style="min-height:100px"></div>`;
+		modifiedHtml = modifiedHtml.replace(section.html, placeholder);
+	}
+
+	return { html: modifiedHtml, sections: sectionsToStream };
+}
+
+/**
+ * Inject Intersection Observer script to load sections progressively
+ */
+function injectSectionLoaderScript(html: string, sectionIds: string[]): string {
+	// Skip if no sections to load
+	if (sectionIds.length === 0) {
+		return html;
+	}
+
+	const script = `
+<script>
+(function() {
+	const sectionsToLoad = ${JSON.stringify(sectionIds)};
+	const loadedSections = new Set();
+	const loadingSections = new Set();
+
+	function loadSection(sectionId) {
+		if (loadedSections.has(sectionId) || loadingSections.has(sectionId)) {
+			return;
+		}
+		
+		loadingSections.add(sectionId);
+		const placeholder = document.getElementById('section-placeholder-' + sectionId);
+		
+		if (!placeholder) {
+			loadingSections.delete(sectionId);
+			return;
+		}
+
+		fetch('/section/' + sectionId, {
+			method: 'GET',
+			headers: { 'Accept': 'text/html' }
+		})
+		.then(response => {
+			if (!response.ok) throw new Error('Section load failed: ' + response.status);
+			return response.text();
+		})
+		.then(html => {
+			const temp = document.createElement('div');
+			temp.innerHTML = html;
+			const section = temp.firstElementChild;
+			
+			if (section) {
+				placeholder.replaceWith(section);
+				loadedSections.add(sectionId);
+				
+				// Dispatch custom event for analytics/tracking
+				try {
+					window.dispatchEvent(new CustomEvent('sectionLoaded', { detail: { sectionId } }));
+				} catch(e) {}
+			}
+		})
+		.catch(err => {
+			console.error('Failed to load section ' + sectionId + ':', err);
+		})
+		.finally(() => {
+			loadingSections.delete(sectionId);
+		});
+	}
+
+	// Set up Intersection Observer
+	if ('IntersectionObserver' in window) {
+		const observer = new IntersectionObserver((entries) => {
+			entries.forEach(entry => {
+				if (entry.isIntersecting) {
+					const sectionId = entry.target.getAttribute('data-section-id');
+					if (sectionId) {
+						loadSection(sectionId);
+						observer.unobserve(entry.target);
+					}
+				}
+			});
+		}, {
+			rootMargin: '200px 0px', // Start loading 200px before section enters viewport
+			threshold: 0.01
+		});
+
+		// Observe all section placeholders
+		sectionsToLoad.forEach(sectionId => {
+			const placeholder = document.getElementById('section-placeholder-' + sectionId);
+			if (placeholder) {
+				observer.observe(placeholder);
+			}
+		});
+
+		// Fallback: Load all sections after 10 seconds if not loaded by scroll
+		setTimeout(() => {
+			sectionsToLoad.forEach(sectionId => {
+				if (!loadedSections.has(sectionId)) {
+					loadSection(sectionId);
+				}
+			});
+		}, 10000);
+	} else {
+		// Fallback for browsers without IntersectionObserver - load immediately
+		sectionsToLoad.forEach(loadSection);
+	}
+})();
+</script>`;
+
+	// Inject before </body>
+	const bodyCloseIndex = html.lastIndexOf('</body>');
+	if (bodyCloseIndex !== -1) {
+		return html.slice(0, bodyCloseIndex) + script + html.slice(bodyCloseIndex);
+	}
+
+	// Fallback: append to end
+	return html + script;
 }
