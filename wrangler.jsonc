@@ -13,6 +13,9 @@
 	"env": {
 		"production": {
 			"name": "webflow-wp-proxy-prod",
+			"triggers": {
+				"crons": ["0 * * * *"]
+			},
 			"vars": {
 				"DOMAIN": "www.bxstudio.cloud",
 				"IMAGE_FORMAT": "auto",

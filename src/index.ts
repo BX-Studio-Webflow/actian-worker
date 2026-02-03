@@ -5,7 +5,7 @@
  *
  * Version: 4.3 (Production-Ready)
  *
- * Copyright (c) 2025 Milk Moon Studio
+ * Copyright (c) 2025 BX Studio
  * Licensed under the MIT License
  * See LICENSE file for full license text
  *
@@ -50,7 +50,7 @@
  * Set these environment variables in Cloudflare Dashboard (Workers → Settings → Variables):
  *
  * REQUIRED:
- * - DOMAIN: Your domain (e.g., "www.milkmoonstudio.com")
+ * - DOMAIN: Your domain (e.g., "www.bxstudio.cloud")
  *   If not set, auto-detects from request URL
  *
  * OPTIONAL (with defaults):
@@ -77,12 +77,12 @@
  *      * assets.website-files.com
  *      * assets-global.website-files.com
  *      * uploads-ssl.webflow.com
- *      * YOUR_DOMAIN (e.g., www.milkmoonstudio.com) ← Required for image transformation
+ *      * YOUR_DOMAIN (e.g., www.bxstudio.cloud) ← Required for image transformation
  *    - Or use *.website-files.com wildcard if available
  *
  * 3. REQUIRED: Deploy Worker on Custom Domain
  *    - Deploy this Worker on a custom domain route (not *.workers.dev)
- *    - Set route to match your site: e.g., *milkmoonstudio.com/*
+ *    - Set route to match your site: e.g., *bxstudio.cloud/*
  *
  * 4. CACHING NOTE:
  *    - This script uses Cloudflare edge caching (fast, global distribution)
@@ -261,6 +261,10 @@ const BOT_USER_AGENTS = [
 export default {
 	async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
 		return handleRequest(request, env, ctx);
+	},
+
+	async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
+		return handleScheduled(event, env, ctx);
 	},
 };
 
@@ -1854,4 +1858,60 @@ function injectSectionLoaderScript(html: string, sectionIds: string[]): string {
 
 	// Fallback: append to end
 	return html + script;
+}
+
+// ============================================
+// SCHEDULED CACHE WARMING
+// ============================================
+
+import { calculateStats, getUrlsFromSitemap, warmCache } from './cache-warmer';
+
+interface ScheduledEvent {
+	scheduledTime: number;
+	cron: string;
+}
+
+/**
+ * Handle scheduled cache warming
+ */
+async function handleScheduled(event: ScheduledEvent, env: Env, _ctx: ExecutionContext): Promise<void> {
+	const startTime = Date.now();
+	console.log(`Cache warming started at ${new Date(event.scheduledTime).toISOString()}`);
+
+	try {
+		// Get domain from config
+		const domain = env.DOMAIN;
+		if (!domain) {
+			throw new Error('DOMAIN environment variable is required for cache warming');
+		}
+
+		// Fetch URLs from sitemap
+		const urls = await getUrlsFromSitemap(domain);
+		console.log(`Found ${urls.length} URLs to warm`);
+
+		// Warm cache (batch size of 5)
+		const results = await warmCache(urls, 5);
+
+		// Calculate statistics
+		const stats = calculateStats(results);
+		const totalDuration = Date.now() - startTime;
+
+		console.log('Cache warming complete:', {
+			totalUrls: results.length,
+			successful: stats.successful,
+			failed: stats.failed,
+			cacheHits: stats.hits,
+			cacheMisses: stats.misses,
+			avgDuration: stats.avgDuration,
+			totalDuration: `${totalDuration}ms`,
+		});
+
+		// Log any errors
+		const errors = results.filter((r) => r.error);
+		if (errors.length > 0) {
+			console.error('Failed URLs:', errors);
+		}
+	} catch (error) {
+		console.error('Cache warming error:', (error as Error).message, (error as Error).stack);
+	}
 }
