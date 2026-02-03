@@ -293,25 +293,28 @@ Bots receive complete HTML with all sections for proper indexing.
 
 These constants in [index.ts](src/index.ts#L1761-L1762) control progressive loading behavior:
 
-| Constant | Default | Description | Aggressiveness |
-|----------|---------|-------------|----------------|
-| `ROOT_MARGIN_HEIGHT` | `100px` | Distance before viewport to start loading | Higher = More aggressive preloading |
-| `MINIMUM_PLACEHOLDER_HEIGHT` | `200px` | Min-height of placeholder divs | Higher = More spacing between sections |
-| `IDLE_TIMEOUT_MS` | `30000` | Milliseconds before loading all sections | Lower = More aggressive fallback |
+| Constant                     | Default | Description                               | Aggressiveness                         |
+| ---------------------------- | ------- | ----------------------------------------- | -------------------------------------- |
+| `ROOT_MARGIN_HEIGHT`         | `100px` | Distance before viewport to start loading | Higher = More aggressive preloading    |
+| `MINIMUM_PLACEHOLDER_HEIGHT` | `200px` | Min-height of placeholder divs            | Higher = More spacing between sections |
+| `IDLE_TIMEOUT_MS`            | `30000` | Milliseconds before loading all sections  | Lower = More aggressive fallback       |
 
 **ROOT_MARGIN_HEIGHT:**
+
 - **100px** (Conservative): Load sections when 100px below viewport
 - **200px** (Balanced): Start loading 200px before visible
 - **400px** (Aggressive): Preload well before user scrolls to it
 - **Trade-off**: Higher values = faster perceived load, but more initial requests
 
 **MINIMUM_PLACEHOLDER_HEIGHT:**
+
 - **200px** (Default): Each placeholder takes 200px vertical space
 - **400px** (More spacing): Prevents multiple sections triggering at once
 - **50px** (Compact): More sections visible initially
 - **Trade-off**: Higher values = better spacing, but more blank space initially
 
 **IDLE_TIMEOUT_MS:**
+
 - **10000** (10s, Aggressive): Load all sections after 10 seconds
 - **30000** (30s, Balanced): Wait 30 seconds before loading everything
 - **60000** (60s, Conservative): Give user time to explore before full load
