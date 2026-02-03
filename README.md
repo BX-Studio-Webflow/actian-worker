@@ -159,6 +159,20 @@ pnpm run deploy
 
 The worker will be deployed to your production environment.
 
+## 🔄 Publishing Workflow (Webflow Changes)
+
+After making changes in Webflow and publishing:
+
+1. **Publish in Webflow**: Click "Publish" in Webflow Designer
+2. **Purge Cloudflare Cache**: 
+   - Go to your Cloudflare dashboard
+   - Navigate to your domain (e.g., `bxstudio.cloud`)
+   - Go to **Caching** → **Configuration**
+   - Click **Purge Everything**
+   - Confirm the purge
+
+This ensures users see the latest content immediately without waiting for cache expiration.
+
 ## 🎯 Usage
 
 ### HTML Section Attributes
