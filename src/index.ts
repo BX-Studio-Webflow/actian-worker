@@ -1819,7 +1819,7 @@ function injectSectionLoaderScript(html: string, sectionIds: string[]): string {
 				}
 			});
 		}, {
-			rootMargin: '200px 0px', // Start loading 200px before section enters viewport
+			rootMargin: '100px 0px', // Start loading 100px before section enters viewport
 			threshold: 0.01
 		});
 

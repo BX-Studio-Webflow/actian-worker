@@ -287,6 +287,111 @@ Bots receive complete HTML with all sections for proper indexing.
 4. **Fallback**: All sections load after 10 seconds if not scrolled
 5. **No JS Fallback**: Sections load immediately if IntersectionObserver unavailable
 
+#### Injected Script
+
+The worker automatically injects this script before `</body>` to handle progressive loading:
+
+```javascript
+<script>
+(function() {
+	const sectionsToLoad = ["2", "3", "4"]; // Section IDs dynamically inserted
+	const loadedSections = new Set();
+	const loadingSections = new Set();
+
+	function loadSection(sectionId) {
+		if (loadedSections.has(sectionId) || loadingSections.has(sectionId)) {
+			return;
+		}
+
+		loadingSections.add(sectionId);
+		const placeholder = document.getElementById('section-placeholder-' + sectionId);
+
+		if (!placeholder) {
+			loadingSections.delete(sectionId);
+			return;
+		}
+
+		fetch('/section/' + sectionId, {
+			method: 'GET',
+			headers: { 'Accept': 'text/html' }
+		})
+		.then(response => {
+			if (!response.ok) throw new Error('Section load failed: ' + response.status);
+			return response.text();
+		})
+		.then(html => {
+			const temp = document.createElement('div');
+			temp.innerHTML = html;
+			const section = temp.firstElementChild;
+
+			if (section) {
+				placeholder.replaceWith(section);
+				loadedSections.add(sectionId);
+
+				// Dispatch custom event for analytics/tracking
+				try {
+					window.dispatchEvent(new CustomEvent('sectionLoaded', { detail: { sectionId } }));
+				} catch(e) {}
+			}
+		})
+		.catch(err => {
+			console.error('Failed to load section ' + sectionId + ':', err);
+		})
+		.finally(() => {
+			loadingSections.delete(sectionId);
+		});
+	}
+
+	// Set up Intersection Observer
+	if ('IntersectionObserver' in window) {
+		const observer = new IntersectionObserver((entries) => {
+			entries.forEach(entry => {
+				if (entry.isIntersecting) {
+					const sectionId = entry.target.getAttribute('data-section-id');
+					if (sectionId) {
+						loadSection(sectionId);
+						observer.unobserve(entry.target);
+					}
+				}
+			});
+		}, {
+			rootMargin: '200px 0px', // Start loading 200px before section enters viewport
+			threshold: 0.01
+		});
+
+		// Observe all section placeholders
+		sectionsToLoad.forEach(sectionId => {
+			const placeholder = document.getElementById('section-placeholder-' + sectionId);
+			if (placeholder) {
+				observer.observe(placeholder);
+			}
+		});
+
+		// Fallback: Load all sections after 10 seconds if not loaded by scroll
+		setTimeout(() => {
+			sectionsToLoad.forEach(sectionId => {
+				if (!loadedSections.has(sectionId)) {
+					loadSection(sectionId);
+				}
+			});
+		}, 10000);
+	} else {
+		// Fallback for browsers without IntersectionObserver - load immediately
+		sectionsToLoad.forEach(loadSection);
+	}
+})();
+</script>
+```
+
+**Script Features:**
+
+- **Intersection Observer**: 200px rootMargin for preloading
+- **Deduplication**: Tracks loaded/loading sections to prevent duplicates
+- **Custom Event**: Dispatches `sectionLoaded` event for analytics integration
+- **Error Handling**: Console logs fetch failures without breaking page
+- **Timeout Fallback**: Loads all sections after 10s if not scrolled
+- **Legacy Browser Support**: Falls back to immediate loading without IntersectionObserver
+
 ### Image Optimization Pipeline
 
 ```
