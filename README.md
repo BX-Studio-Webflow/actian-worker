@@ -117,6 +117,26 @@ pnpm install
    - `uploads-ssl.webflow.com`
    - Your domain (e.g., `www.yourdomain.com`)
 
+### 2.5. Enable Tiered Cache (Recommended)
+
+**Improve cache efficiency and reduce origin requests:**
+
+1. Navigate to: **Your Zone → Caching → Configuration**
+2. Scroll to **Tiered Cache**
+3. Enable **Tiered Cache**
+
+**Benefits:**
+- Reduces requests to Webflow origin by checking multiple cache tiers/servers
+- Improves cache hit ratio across Cloudflare's global network
+- Lower latency for cache misses (fetches from upper-tier instead of origin)
+- Works seamlessly with this worker's caching strategy
+
+**Optional: Cache Reserve**
+- Navigate to: **Your Zone → Caching → Cache Reserve**
+- Enable **Cache Reserve** (paid add-on)
+- Further improves cache persistence with R2-backed storage
+- Note: Not available for O2O (Origin-to-Origin) proxying used by Webflow
+
 ### 3. Configure Environment Variables
 
 Edit `wrangler.jsonc` or set via Cloudflare Dashboard → Workers → Settings → Variables:
