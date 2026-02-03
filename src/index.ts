@@ -1759,7 +1759,7 @@ function injectSectionLoaderScript(html: string, sectionIds: string[]): string {
 	if (sectionIds.length === 0) {
 		return html;
 	}
-	const ROOT_MARGIN_HEIGHT = 180; //lesser the number, the lesser the aggressiveness of preloading
+	const ROOT_MARGIN_HEIGHT = 200; //lesser the number, the lesser the aggressiveness of preloading
 	const IDLE_TIMEOUT_MS = 30000; //time to wait after which load all sections
 	const script = `
 <script>
