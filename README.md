@@ -170,6 +170,8 @@ After making changes in Webflow and publishing:
    - Go to **Caching** → **Configuration**
    - Click **Purge Everything**
    - Confirm the purge
+   - After purging, scores might momentarily reduce, as the proxy is defaulting back to webflow servers, this is normal as the cache is automatcially repopulated, just reattempt the score test
+   - Sometimes core web vitals test might fail on the first attempt, this is because CF has not populated the nearest CDN to google servers, and the proxy is fetching form Webflow servers, re-running the test will automatically populate the cache for that CF zone and fix the score
 
 This ensures users see the latest content immediately without waiting for cache expiration.
 
