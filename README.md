@@ -126,12 +126,14 @@ pnpm install
 3. Enable **Tiered Cache**
 
 **Benefits:**
+
 - Reduces requests to Webflow origin by checking multiple cache tiers/servers
 - Improves cache hit ratio across Cloudflare's global network
 - Lower latency for cache misses (fetches from upper-tier instead of origin)
 - Works seamlessly with this worker's caching strategy
 
 **Optional: Cache Reserve**
+
 - Navigate to: **Your Zone → Caching → Cache Reserve**
 - Enable **Cache Reserve** (paid add-on)
 - Further improves cache persistence with R2-backed storage
