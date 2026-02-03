@@ -1742,8 +1742,9 @@ async function extractAndCacheSections(
 
 	// Replace streaming sections with placeholders
 	let modifiedHtml = html;
+	const MINIMUM_PLACEHOLDER_HEIGHT = 550; // Minimum height of placeholder
 	for (const section of sectionsToStream) {
-		const placeholder = `<div id="section-placeholder-${section.id}" data-section-id="${section.id}" class="section-placeholder" style="min-height:100px"></div>`;
+		const placeholder = `<div id="section-placeholder-${section.id}" data-section-id="${section.id}" class="section-placeholder" style="min-height:${MINIMUM_PLACEHOLDER_HEIGHT}px"></div>`;
 		modifiedHtml = modifiedHtml.replace(section.html, placeholder);
 	}
 
@@ -1758,7 +1759,8 @@ function injectSectionLoaderScript(html: string, sectionIds: string[]): string {
 	if (sectionIds.length === 0) {
 		return html;
 	}
-
+	const ROOT_MARGIN_HEIGHT = 100; //lesser the number, the lesser the aggressiveness of preloading
+	const IDLE_TIMEOUT_MS = 30000; //time to wait after which load all sections
 	const script = `
 <script>
 (function() {
@@ -1823,7 +1825,7 @@ function injectSectionLoaderScript(html: string, sectionIds: string[]): string {
 				}
 			});
 		}, {
-			rootMargin: '100px 0px', // Start loading 100px before section enters viewport
+			rootMargin: '${ROOT_MARGIN_HEIGHT}px 0px', // Start loading 20px before section enters viewport
 			threshold: 0.01
 		});
 
@@ -1842,7 +1844,7 @@ function injectSectionLoaderScript(html: string, sectionIds: string[]): string {
 					loadSection(sectionId);
 				}
 			});
-		}, 10000);
+		}, ${IDLE_TIMEOUT_MS});
 	} else {
 		// Fallback for browsers without IntersectionObserver - load immediately
 		sectionsToLoad.forEach(loadSection);
