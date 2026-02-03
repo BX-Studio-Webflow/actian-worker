@@ -211,6 +211,49 @@ const EXCLUDED_DOMAINS = [
 	'fonts.gstatic.com',
 ];
 
+// Bot user agents (for serving full HTML to crawlers)
+const BOT_USER_AGENTS = [
+	'googlebot',
+	'bingbot',
+	'slurp', // Yahoo
+	'duckduckbot',
+	'baiduspider',
+	'yandexbot',
+	'sogou',
+	'exabot',
+	'facebot',
+	'facebookexternalhit',
+	'twitterbot',
+	'rogerbot',
+	'linkedinbot',
+	'embedly',
+	'quora link preview',
+	'showyoubot',
+	'outbrain',
+	'pinterest',
+	'slackbot',
+	'vkshare',
+	'w3c_validator',
+	'whatsapp',
+	'redditbot',
+	'applebot',
+	'flipboard',
+	'tumblr',
+	'bitlybot',
+	'skypeuripreview',
+	'nuzzel',
+	'discordbot',
+	'qwantify',
+	'pinterestbot',
+	'bitrix',
+	'lighthouse', // Google Lighthouse
+	'chrome-lighthouse',
+	'gtmetrix',
+	'pingdom',
+	'headlesschrome',
+	'phantomjs',
+];
+
 // ============================================
 // WORKER ENTRY POINT
 // ============================================
@@ -295,7 +338,7 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
 		}
 
 		// Transform image and asset URLs in HTML
-		return transformHtmlResponse(response, config, ctx);
+		return transformHtmlResponse(response, config, ctx, request);
 	} catch (error) {
 		// On any error, fail open - return original request
 		console.error('Worker error:', (error as Error).message, (error as Error).stack);
@@ -444,7 +487,7 @@ function validateConfig(config: Config): void {
 /**
  * Transform HTML response to rewrite image and asset URLs
  */
-async function transformHtmlResponse(response: Response, config: Config, ctx: ExecutionContext): Promise<Response> {
+async function transformHtmlResponse(response: Response, config: Config, ctx: ExecutionContext, request: Request): Promise<Response> {
 	// Clone response before reading (body can only be read once)
 	const responseClone = response.clone();
 
@@ -456,6 +499,9 @@ async function transformHtmlResponse(response: Response, config: Config, ctx: Ex
 		console.error('Failed to read response text:', (textError as Error).message);
 		return responseClone;
 	}
+
+	// Check if request is from a bot
+	const isBot = isBotRequest(request);
 
 	// Quick check - any Webflow CDN assets worth processing?
 	if (!hasWebflowAssets(html, config)) {
@@ -478,8 +524,9 @@ async function transformHtmlResponse(response: Response, config: Config, ctx: Ex
 	// Transform all asset URLs (CSS, JS, fonts, icons)
 	html = transformAllAssetUrls(html, config, domainInfo, siteId);
 
-	// Progressive section loading (if enabled)
-	if (config.PROGRESSIVE_SECTIONS_ENABLED) {
+	// Progressive section loading (if enabled and not a bot)
+	// Bots get full HTML for proper SEO indexing
+	if (config.PROGRESSIVE_SECTIONS_ENABLED && !isBot) {
 		try {
 			const { html: modifiedHtml, sections } = await extractAndCacheSections(html, config, ctx, response.url);
 			html = modifiedHtml;
@@ -566,6 +613,19 @@ function isOwnDomain(hostname: string, domainInfo: DomainInfo): boolean {
 	}
 
 	return false;
+}
+
+/**
+ * Check if request is from a bot/crawler
+ */
+function isBotRequest(request: Request): boolean {
+	const userAgent = request.headers.get('User-Agent');
+	if (!userAgent) {
+		return false;
+	}
+
+	const lowerUA = userAgent.toLowerCase();
+	return BOT_USER_AGENTS.some((botAgent) => lowerUA.includes(botAgent));
 }
 
 /**
@@ -1590,7 +1650,7 @@ async function handleOriginalImageProxy(url: URL, config: Config, _ctx: Executio
 /**
  * Handle requests for individual sections
  */
-async function handleSectionRequest(url: URL, config: Config, ctx: ExecutionContext): Promise<Response> {
+async function handleSectionRequest(url: URL, _config: Config, _ctx: ExecutionContext): Promise<Response> {
 	const sectionId = url.pathname.slice('/section/'.length);
 
 	if (!sectionId || !/^\d+$/.test(sectionId)) {
@@ -1630,26 +1690,31 @@ async function extractAndCacheSections(
 	ctx: ExecutionContext,
 	requestUrl: string,
 ): Promise<{ html: string; sections: ExtractedSection[] }> {
-	const sections: ExtractedSection[] = [];
-	const sectionRegex = /<section([^>]*optimised=["'](\d+)["'][^>]*)>([\s\S]*?)<\/section>/gi;
+	const sectionsToStream: ExtractedSection[] = [];
+	const sectionRegex = /<section([^>]*)>([\s\S]*?)<\/section>/gi;
 
+	let sectionCounter = 0;
 	let match;
 	while ((match = sectionRegex.exec(html)) !== null) {
-		const sectionId = match[2];
+		const sectionAttrs = match[1];
 		const fullSection = match[0];
 
-		sections.push({
-			id: sectionId,
-			html: fullSection,
-		});
+		// Check if this section has optimised="none"
+		const hasDontStream = /optimised=["']none["']/i.test(sectionAttrs);
+
+		// Only extract sections that should be streamed (don't have none)
+		if (!hasDontStream) {
+			sectionCounter++;
+			sectionsToStream.push({
+				id: sectionCounter.toString(),
+				html: fullSection,
+			});
+		}
 	}
 
-	// Sort sections by ID to ensure consistent order
-	sections.sort((a, b) => parseInt(a.id) - parseInt(b.id));
-
-	// Cache each section
+	// Cache each section that will be streamed
 	if (ctx && ctx.waitUntil) {
-		for (const section of sections) {
+		for (const section of sectionsToStream) {
 			const sectionUrl = new URL(`/section/${section.id}`, requestUrl);
 			const cacheKey = new Request(sectionUrl.toString(), { method: 'GET' });
 
@@ -1671,33 +1736,29 @@ async function extractAndCacheSections(
 		}
 	}
 
-	// Replace sections in HTML with placeholders (except first section)
+	// Replace streaming sections with placeholders
 	let modifiedHtml = html;
-	for (const section of sections) {
-		// Keep first section (optimised="1"), replace others
-		if (parseInt(section.id) > 1) {
-			const placeholder = `<div id="section-placeholder-${section.id}" data-section-id="${section.id}" class="section-placeholder" style="min-height:100px"></div>`;
-			modifiedHtml = modifiedHtml.replace(section.html, placeholder);
-		}
+	for (const section of sectionsToStream) {
+		const placeholder = `<div id="section-placeholder-${section.id}" data-section-id="${section.id}" class="section-placeholder" style="min-height:100px"></div>`;
+		modifiedHtml = modifiedHtml.replace(section.html, placeholder);
 	}
 
-	return { html: modifiedHtml, sections };
+	return { html: modifiedHtml, sections: sectionsToStream };
 }
 
 /**
  * Inject Intersection Observer script to load sections progressively
  */
 function injectSectionLoaderScript(html: string, sectionIds: string[]): string {
-	// Skip if no sections to load (all sections kept in initial load)
-	const sectionsToLoad = sectionIds.filter((id) => parseInt(id) > 1);
-	if (sectionsToLoad.length === 0) {
+	// Skip if no sections to load
+	if (sectionIds.length === 0) {
 		return html;
 	}
 
 	const script = `
 <script>
 (function() {
-	const sectionsToLoad = ${JSON.stringify(sectionsToLoad)};
+	const sectionsToLoad = ${JSON.stringify(sectionIds)};
 	const loadedSections = new Set();
 	const loadingSections = new Set();
 
