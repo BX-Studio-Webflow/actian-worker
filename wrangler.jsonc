@@ -24,7 +24,8 @@
 				"CATCH_ALL_EXTERNAL": "false",
 				"SITE_ID": "69259def79719995b09e699d",
 				"PURIFIED_CSS_ENABLED": "true",
-				"MINIFIED_CSS_LINK": "https://storage.bxstudio.cloud/styles.pure.css"
+				"MINIFIED_CSS_LINK": "https://storage.bxstudio.cloud/styles.pure.css",
+				"PROGRESSIVE_SECTIONS_ENABLED": "true"
 			}
 		},
 		"development": {
@@ -40,7 +41,8 @@
 				"CATCH_ALL_EXTERNAL": "false",
 				"SITE_ID": "69259def79719995b09e699d",
 				"PURIFIED_CSS_ENABLED": "true",
-				"MINIFIED_CSS_LINK": "https://storage.bxstudio.cloud/styles.pure.css"
+				"MINIFIED_CSS_LINK": "https://storage.bxstudio.cloud/styles.pure.css",
+				"PROGRESSIVE_SECTIONS_ENABLED": "true"
 			}
 		}
 	}
