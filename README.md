@@ -176,10 +176,10 @@ Edit `wrangler.jsonc` or set via Cloudflare Dashboard → Workers → Settings �
 				"CATCH_ALL_EXTERNAL": "false", // Process non-Webflow images
 				"PURIFIED_CSS_ENABLED": "false",
 				"MINIFIED_CSS_LINK": "",
-				
+
 				// EVENTS
 				"DISPATCH_EVENT": "BOTH", // SECTION_LOADED, DOM_LOADED, or BOTH
-				
+
 				// CACHE PURGE (Optional)
 				"CF_ZONE_ID": "your-zone-id",
 				"CF_API_TOKEN": "your-api-token",
@@ -527,7 +527,7 @@ When sections are loaded dynamically, any scripts within them are:
 	<div class="accordion"><!-- Content --></div>
 	<script>
 		function initializeAccordions() {
-			document.querySelectorAll('.accordion').forEach(acc => {
+			document.querySelectorAll('.accordion').forEach((acc) => {
 				// Initialize accordion logic
 			});
 		}
@@ -542,11 +542,11 @@ When this section loads, the script will execute and initialize accordions on th
 
 Control what events fire when sections load via the `DISPATCH_EVENT` environment variable:
 
-| Value | Behavior |
-| --- | --- |
-| `SECTION_LOADED` | Only dispatches custom `sectionLoaded` event |
-| `DOM_LOADED` | Only dispatches standard `DOMContentLoaded` event |
-| `BOTH` | Dispatches both events |
+| Value            | Behavior                                          |
+| ---------------- | ------------------------------------------------- |
+| `SECTION_LOADED` | Only dispatches custom `sectionLoaded` event      |
+| `DOM_LOADED`     | Only dispatches standard `DOMContentLoaded` event |
+| `BOTH`           | Dispatches both events                            |
 
 **Listen for Events:**
 
