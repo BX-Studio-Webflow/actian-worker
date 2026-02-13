@@ -1801,7 +1801,10 @@ function injectSectionLoaderScript(html: string, sectionIds: string[]): string {
 				// Dispatch custom event for analytics/tracking
 				try {
 					window.dispatchEvent(new CustomEvent('sectionLoaded', { detail: { sectionId } }));
-				} catch(e) {}
+					console.log('dispatched sectionLoaded event for section ' + sectionId);
+				} catch(e) {
+				console.error("Failed to dispatch sectionLoaded event for section " + sectionId + ": ", e); 
+				}
 			}
 		})
 		.catch(err => {
