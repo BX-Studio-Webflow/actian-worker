@@ -29,7 +29,8 @@
 				"PURIFIED_CSS_ENABLED": "true",
 				"MINIFIED_CSS_LINK": "https://storage.bxstudio.cloud/styles.pure.css",
 				"PROGRESSIVE_SECTIONS_ENABLED": "true",
-				"OPTIMISE_LANDING_PAGE_ONLY": "true"
+				"OPTIMISE_LANDING_PAGE_ONLY": "true",
+				"DISPATCH_EVENT": "DOM_LOADED"
 			}
 		},
 		"development": {
@@ -47,7 +48,8 @@
 				"PURIFIED_CSS_ENABLED": "true",
 				"MINIFIED_CSS_LINK": "https://storage.bxstudio.cloud/styles.pure.css",
 				"PROGRESSIVE_SECTIONS_ENABLED": "true",
-				"OPTIMISE_LANDING_PAGE_ONLY": "true"
+				"OPTIMISE_LANDING_PAGE_ONLY": "true",
+				"DISPATCH_EVENT": "BOTH"
 			}
 		}
 	}

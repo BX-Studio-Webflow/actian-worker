@@ -131,6 +131,7 @@ interface Env {
 	MINIFIED_CSS_LINK?: string; // URL to purified/minified CSS file
 	PROGRESSIVE_SECTIONS_ENABLED?: string;
 	OPTIMISE_LANDING_PAGE_ONLY?: string;
+	DISPATCH_EVENT?: 'BOT' | 'DOM_LOADED' | 'BOTH';
 }
 
 interface Config {
@@ -147,6 +148,7 @@ interface Config {
 	MINIFIED_CSS_LINK: string | null;
 	PROGRESSIVE_SECTIONS_ENABLED: boolean;
 	OPTIMISE_LANDING_PAGE_ONLY: boolean;
+	DISPATCH_EVENT: string;
 }
 
 interface DomainInfo {
@@ -412,6 +414,7 @@ function getConfig(env: Env, request: Request): Config {
 			MINIFIED_CSS_LINK: env.MINIFIED_CSS_LINK || null,
 			PROGRESSIVE_SECTIONS_ENABLED: env.PROGRESSIVE_SECTIONS_ENABLED === 'true',
 			OPTIMISE_LANDING_PAGE_ONLY: env.OPTIMISE_LANDING_PAGE_ONLY === 'true' || DEFAULT_CONFIG.OPTIMISE_LANDING_PAGE_ONLY,
+			DISPATCH_EVENT: env.DISPATCH_EVENT || 'BOTH',
 		};
 	}
 
@@ -459,6 +462,7 @@ function getConfig(env: Env, request: Request): Config {
 		MINIFIED_CSS_LINK: env.MINIFIED_CSS_LINK || null,
 		PROGRESSIVE_SECTIONS_ENABLED: env.PROGRESSIVE_SECTIONS_ENABLED === 'true',
 		OPTIMISE_LANDING_PAGE_ONLY: env.OPTIMISE_LANDING_PAGE_ONLY === 'true' || DEFAULT_CONFIG.OPTIMISE_LANDING_PAGE_ONLY,
+		DISPATCH_EVENT: env.DISPATCH_EVENT || 'BOTH',
 	};
 }
 
@@ -554,7 +558,7 @@ async function transformHtmlResponse(response: Response, config: Config, ctx: Ex
 			// Inject loader script if sections were extracted
 			if (sections.length > 0) {
 				const sectionIds = sections.map((s) => s.id);
-				html = injectSectionLoaderScript(html, sectionIds);
+				html = injectSectionLoaderScript(html, sectionIds, config);
 			}
 		} catch (sectionError) {
 			console.error('Section extraction error:', (sectionError as Error).message);
@@ -1770,7 +1774,7 @@ async function extractAndCacheSections(
 /**
  * Inject Intersection Observer script to load sections progressively
  */
-function injectSectionLoaderScript(html: string, sectionIds: string[]): string {
+function injectSectionLoaderScript(html: string, sectionIds: string[], config: Config): string {
 	// Skip if no sections to load
 	if (sectionIds.length === 0) {
 		return html;
@@ -1814,12 +1818,20 @@ function injectSectionLoaderScript(html: string, sectionIds: string[]): string {
 				placeholder.replaceWith(section);
 				loadedSections.add(sectionId);
 				
-				// Dispatch custom event for analytics/tracking
+				// Dispatch events based on configuration
+				const dispatchEvent = '${config.DISPATCH_EVENT}';
 				try {
-					window.dispatchEvent(new CustomEvent('sectionLoaded', { detail: { sectionId } }));
-					console.log('dispatched sectionLoaded event for section ' + sectionId);
+					if (dispatchEvent === 'SECTION_LOADED' || dispatchEvent === 'BOTH') {
+						window.dispatchEvent(new CustomEvent('sectionLoaded', { detail: { sectionId } }));
+						console.log('dispatched sectionLoaded event for section ' + sectionId);
+					}
+					
+					if (dispatchEvent === 'DOM_LOADED' || dispatchEvent === 'BOTH') {
+						document.dispatchEvent(new Event('DOMContentLoaded'));
+						console.log('dispatched DOMContentLoaded event');
+					}
 				} catch(e) {
-				console.error("Failed to dispatch sectionLoaded event for section " + sectionId + ": ", e); 
+				console.error("Failed to dispatch events: ", e); 
 				}
 			}
 		})
