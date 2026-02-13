@@ -28,7 +28,8 @@
 				"SITE_ID": "69259def79719995b09e699d",
 				"PURIFIED_CSS_ENABLED": "true",
 				"MINIFIED_CSS_LINK": "https://storage.bxstudio.cloud/styles.pure.css",
-				"PROGRESSIVE_SECTIONS_ENABLED": "true"
+				"PROGRESSIVE_SECTIONS_ENABLED": "true",
+				"OPTIMISE_LANDING_PAGE_ONLY": "true"
 			}
 		},
 		"development": {
@@ -45,7 +46,8 @@
 				"SITE_ID": "69259def79719995b09e699d",
 				"PURIFIED_CSS_ENABLED": "true",
 				"MINIFIED_CSS_LINK": "https://storage.bxstudio.cloud/styles.pure.css",
-				"PROGRESSIVE_SECTIONS_ENABLED": "true"
+				"PROGRESSIVE_SECTIONS_ENABLED": "true",
+				"OPTIMISE_LANDING_PAGE_ONLY": "true"
 			}
 		}
 	}

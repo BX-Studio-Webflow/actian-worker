@@ -130,6 +130,7 @@ interface Env {
 	PURIFIED_CSS_ENABLED?: string;
 	MINIFIED_CSS_LINK?: string; // URL to purified/minified CSS file
 	PROGRESSIVE_SECTIONS_ENABLED?: string;
+	OPTIMISE_LANDING_PAGE_ONLY?: string;
 }
 
 interface Config {
@@ -145,6 +146,7 @@ interface Config {
 	PURIFIED_CSS_ENABLED: boolean;
 	MINIFIED_CSS_LINK: string | null;
 	PROGRESSIVE_SECTIONS_ENABLED: boolean;
+	OPTIMISE_LANDING_PAGE_ONLY: boolean;
 }
 
 interface DomainInfo {
@@ -178,6 +180,9 @@ const DEFAULT_CONFIG = {
 
 	// Process images from any external domain (not just Webflow CDN)
 	CATCH_ALL_EXTERNAL: false, // Set to true to process all external images
+
+	// Optimize landing page only (other paths fetch from Webflow directly)
+	OPTIMISE_LANDING_PAGE_ONLY: false, // Set to true to apply optimization only to the landing page
 };
 
 // Webflow CDN origins (always processed)
@@ -341,6 +346,15 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
 			return response;
 		}
 
+		// Only apply treatment to the landing page if enabled; other paths fetch from Webflow directly
+		if (config.OPTIMISE_LANDING_PAGE_ONLY) {
+			const { pathname } = url;
+			const isLandingPage = pathname === '/' || pathname === '' || pathname === '/index.html';
+			if (!isLandingPage) {
+				return response;
+			}
+		}
+
 		// Transform image and asset URLs in HTML
 		return transformHtmlResponse(response, config, ctx, request);
 	} catch (error) {
@@ -397,6 +411,7 @@ function getConfig(env: Env, request: Request): Config {
 			PURIFIED_CSS_ENABLED: env.PURIFIED_CSS_ENABLED === 'true',
 			MINIFIED_CSS_LINK: env.MINIFIED_CSS_LINK || null,
 			PROGRESSIVE_SECTIONS_ENABLED: env.PROGRESSIVE_SECTIONS_ENABLED === 'true',
+			OPTIMISE_LANDING_PAGE_ONLY: env.OPTIMISE_LANDING_PAGE_ONLY === 'true' || DEFAULT_CONFIG.OPTIMISE_LANDING_PAGE_ONLY,
 		};
 	}
 
@@ -443,6 +458,7 @@ function getConfig(env: Env, request: Request): Config {
 		PURIFIED_CSS_ENABLED: env.PURIFIED_CSS_ENABLED === 'true',
 		MINIFIED_CSS_LINK: env.MINIFIED_CSS_LINK || null,
 		PROGRESSIVE_SECTIONS_ENABLED: env.PROGRESSIVE_SECTIONS_ENABLED === 'true',
+		OPTIMISE_LANDING_PAGE_ONLY: env.OPTIMISE_LANDING_PAGE_ONLY === 'true' || DEFAULT_CONFIG.OPTIMISE_LANDING_PAGE_ONLY,
 	};
 }
 
