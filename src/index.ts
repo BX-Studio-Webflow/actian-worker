@@ -1810,13 +1810,46 @@ function injectSectionLoaderScript(html: string, sectionIds: string[], config: C
 			return response.text();
 		})
 		.then(html => {
+			// Parse HTML and extract scripts
 			const temp = document.createElement('div');
 			temp.innerHTML = html;
+			
+			// Get all scripts before we modify the DOM
+			const scripts = temp.querySelectorAll('script');
+			const scriptContents = [];
+			scripts.forEach(script => {
+				scriptContents.push({
+					src: script.src,
+					textContent: script.textContent,
+					type: script.type
+				});
+				script.remove();
+			});
+			
+			// Now temp.innerHTML is script-free, get the first real element
 			const section = temp.firstElementChild;
 			
 			if (section) {
 				placeholder.replaceWith(section);
 				loadedSections.add(sectionId);
+				
+				// Execute extracted scripts
+				scriptContents.forEach(scriptInfo => {
+					try {
+						const newScript = document.createElement('script');
+						if (scriptInfo.src) {
+							newScript.src = scriptInfo.src;
+							newScript.async = true;
+						} else {
+							newScript.textContent = scriptInfo.textContent;
+						}
+						newScript.type = scriptInfo.type || 'text/javascript';
+						document.body.appendChild(newScript);
+						console.log('Executed script from section:', sectionId);
+					} catch(e) {
+						console.error("Failed to execute script from section " + sectionId + ": ", e);
+					}
+				});
 				
 				// Dispatch events based on configuration
 				const dispatchEvent = '${config.DISPATCH_EVENT}';
