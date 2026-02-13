@@ -22,11 +22,20 @@ A production-ready Cloudflare Worker that dramatically improves Webflow site per
 
 - **Above-the-fold priority**: Critical sections load immediately
 - **Lazy loading**: Non-critical sections stream as user scrolls
+- **Script execution**: Automatically executes inline/external scripts in loaded sections
+- **Event dispatching**: Customizable events (`sectionLoaded`, `DOMContentLoaded`)
 - **Intersection Observer**: Modern API for efficient viewport detection
 - **SEO-safe**: Bots receive full HTML for complete indexing
 - **200px preload**: Sections load before entering viewport for seamless UX
 
-### 4. **SEO & Performance**
+### 4. **Cache Management**
+
+- **Cache purge endpoint**: POST to `/cf-purge-cache/` to clear all cache programmatically
+- **Event-driven**: Rebuild CI/CD pipelines to auto-purge on Webflow publish
+- **Webhook support**: Integrate with Zapier, IFTTT, or custom webhooks
+- **API Token secured**: Optional Authorization header for endpoint security
+
+### 5. **SEO & Performance**
 
 - **Bot detection**: 40+ crawler patterns detected, full HTML served
 - **No cache for dynamic HTML**: Main HTML bypasses cache when progressive loading enabled
@@ -167,6 +176,13 @@ Edit `wrangler.jsonc` or set via Cloudflare Dashboard → Workers → Settings �
 				"CATCH_ALL_EXTERNAL": "false", // Process non-Webflow images
 				"PURIFIED_CSS_ENABLED": "false",
 				"MINIFIED_CSS_LINK": "",
+				
+				// EVENTS
+				"DISPATCH_EVENT": "BOTH", // SECTION_LOADED, DOM_LOADED, or BOTH
+				
+				// CACHE PURGE (Optional)
+				"CF_ZONE_ID": "your-zone-id",
+				"CF_API_TOKEN": "your-api-token",
 			},
 		},
 	},
@@ -222,14 +238,15 @@ Mark sections to control streaming behavior:
 
 ### Worker Endpoints
 
-| Endpoint                        | Purpose                    | Caching                             |
-| ------------------------------- | -------------------------- | ----------------------------------- |
-| `/` (main HTML)                 | Returns optimized HTML     | No cache (when progressive enabled) |
-| `/section/{id}`                 | Individual section content | 1 year edge cache                   |
-| `/img-cache/{url}`              | AVIF image proxy           | 1 year edge cache                   |
-| `/img-original/{url}`           | Original image cache       | 1 year edge cache                   |
-| `/asset-cache/{url}`            | CSS/JS/Font proxy          | 1 year edge cache                   |
-| `/cdn-cgi/image/{params}/{url}` | Cloudflare image transform | Edge cached                         |
+| Endpoint                        | Purpose                    | Method | Caching                             | Auth |
+| ------------------------------- | -------------------------- | ------ | ----------------------------------- | ---- |
+| `/` (main HTML)                 | Returns optimized HTML     | GET    | No cache (when progressive enabled) | No   |
+| `/section/{id}`                 | Individual section content | GET    | 1 year edge cache                   | No   |
+| `/img-cache/{url}`              | AVIF image proxy           | GET    | 1 year edge cache                   | No   |
+| `/img-original/{url}`           | Original image cache       | GET    | 1 year edge cache                   | No   |
+| `/asset-cache/{url}`            | CSS/JS/Font proxy          | GET    | 1 year edge cache                   | No   |
+| `/cdn-cgi/image/{params}/{url}` | Cloudflare image transform | GET    | Edge cached                         | No   |
+| `/cf-purge-cache/`              | Purge all Cloudflare cache | POST   | N/A                                 | Yes  |
 
 ### Image URL Transformation
 
@@ -288,6 +305,12 @@ Mark sections to control streaming behavior:
 - **`CATCH_ALL_EXTERNAL`**: Process non-Webflow external images (`true`/`false`)
 - **`PURIFIED_CSS_ENABLED`**: Enable CSS purification (`true`/`false`)
 - **`MINIFIED_CSS_LINK`**: URL to minified CSS file
+- **`DISPATCH_EVENT`**: Event dispatch behavior (`SECTION_LOADED`, `DOM_LOADED`, `BOTH`)
+
+#### Cache Purge (Optional)
+
+- **`CF_ZONE_ID`**: Cloudflare Zone ID for cache purge endpoint
+- **`CF_API_TOKEN`**: Cloudflare API Token with `Cache Purge` permission
 
 ## 🤖 Bot Detection
 
@@ -482,10 +505,89 @@ The worker automatically injects this script before `</body>` to handle progress
 
 - **Intersection Observer**: 200px rootMargin for preloading
 - **Deduplication**: Tracks loaded/loading sections to prevent duplicates
-- **Custom Event**: Dispatches `sectionLoaded` event for analytics integration
+- **Script Execution**: Extracts and executes all inline/external scripts from sections
+- **Event Dispatching**: Optionally dispatches `sectionLoaded` and `DOMContentLoaded` events
 - **Error Handling**: Console logs fetch failures without breaking page
 - **Timeout Fallback**: Loads all sections after 10s if not scrolled
 - **Legacy Browser Support**: Falls back to immediate loading without IntersectionObserver
+
+#### Script Execution in Dynamically Loaded Sections
+
+When sections are loaded dynamically, any scripts within them are:
+
+1. **Extracted** from the HTML before DOM insertion
+2. **Parsed** individually using DOMParser
+3. **Recreated** as new `<script>` elements
+4. **Appended** to `document.body` to trigger execution
+
+**Example: Loaded Section Script**
+
+```html
+<section class="accordion-section">
+	<div class="accordion"><!-- Content --></div>
+	<script>
+		function initializeAccordions() {
+			document.querySelectorAll('.accordion').forEach(acc => {
+				// Initialize accordion logic
+			});
+		}
+		initializeAccordions();
+	</script>
+</section>
+```
+
+When this section loads, the script will execute and initialize accordions on the newly loaded content.
+
+#### Event Dispatching Configuration
+
+Control what events fire when sections load via the `DISPATCH_EVENT` environment variable:
+
+| Value | Behavior |
+| --- | --- |
+| `SECTION_LOADED` | Only dispatches custom `sectionLoaded` event |
+| `DOM_LOADED` | Only dispatches standard `DOMContentLoaded` event |
+| `BOTH` | Dispatches both events |
+
+**Listen for Events:**
+
+```javascript
+window.addEventListener('sectionLoaded', (event) => {
+	console.log('Section ' + event.detail.sectionId + ' loaded');
+});
+
+document.addEventListener('DOMContentLoaded', () => {
+	console.log('DOM ready');
+});
+```
+
+### Cache Purge Endpoint
+
+Programmatically purge all Cloudflare cached content via POST request.
+
+**Setup:**
+
+1. Create Cloudflare API Token with `Cache Purge` permission
+2. Add to environment variables:
+   ```
+   CF_ZONE_ID=your-zone-id
+   CF_API_TOKEN=your-api-token
+   ```
+
+**Usage:**
+
+```bash
+curl -X POST https://yourdomain.com/cf-purge-cache/ \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+**Response (Success):**
+
+```json
+{
+	"success": true,
+	"message": "Cache purged successfully"
+}
+```
 
 ### Image Optimization Pipeline
 
