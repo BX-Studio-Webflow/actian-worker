@@ -132,6 +132,8 @@ interface Env {
 	PROGRESSIVE_SECTIONS_ENABLED?: string;
 	OPTIMISE_LANDING_PAGE_ONLY?: string;
 	DISPATCH_EVENT?: 'BOT' | 'DOM_LOADED' | 'BOTH';
+	CF_ZONE_ID?: string; // Cloudflare Zone ID for cache purge
+	CF_API_TOKEN?: string; // Cloudflare API Token for cache purge
 }
 
 interface Config {
@@ -323,6 +325,11 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
 		// Handle section requests for progressive loading
 		if (url.pathname.startsWith('/section/')) {
 			return handleSectionRequest(url, config, ctx);
+		}
+
+		// Handle cache purge requests
+		if (url.pathname.startsWith('/cf-purge-cache/')) {
+			return handleCachePurge(request, env);
 		}
 
 		// Fetch the original response from origin with caching enabled
@@ -1706,6 +1713,41 @@ async function handleSectionRequest(url: URL, _config: Config, _ctx: ExecutionCo
 }
 
 /**
+ * Handle Cloudflare cache purge requests
+ * POST /cf-purge-cache/ to purge all cached content
+ */
+async function handleCachePurge(request: Request, env: Env): Promise<Response> {
+	// Only allow POST requests
+	if (request.method !== 'POST') {
+		return purgeCacheErrorResponse(405, 'Method not allowed. Use POST.');
+	}
+
+	// Check for required environment variables
+	if (!env.CF_ZONE_ID || !env.CF_API_TOKEN) {
+		console.error('Missing CF_ZONE_ID or CF_API_TOKEN environment variables');
+		return purgeCacheErrorResponse(500, 'Cache purge not configured. Missing CF_ZONE_ID or CF_API_TOKEN.');
+	}
+
+	try {
+		// Call Cloudflare purge API
+		const result = await purgeCloudflareCache(env.CF_ZONE_ID, env.CF_API_TOKEN);
+
+		if (!result.success) {
+			console.error('Cache purge failed:', result.details);
+			return purgeCacheErrorResponse(500, result.message + ': ' + result.details);
+		}
+
+		return purgeCacheSuccessResponse({
+			message: result.message,
+			details: result.details,
+		});
+	} catch (error) {
+		console.error('Cache purge error:', (error as Error).message);
+		return purgeCacheErrorResponse(500, 'Failed to purge cache: ' + (error as Error).message);
+	}
+}
+
+/**
  * Extract sections with optimised attribute and cache them separately
  */
 async function extractAndCacheSections(
@@ -1927,10 +1969,18 @@ function injectSectionLoaderScript(html: string, sectionIds: string[], config: C
 }
 
 // ============================================
-// SCHEDULED CACHE WARMING
+// CACHE PURGE
 // ============================================
 
+// ============================================
+// SCHEDULED CACHE WARMING
+// ============================================
 import { calculateStats, getUrlsFromSitemap, warmCache } from './cache-warmer';
+import {
+	errorResponse as purgeCacheErrorResponse,
+	purgeCloudflareCache,
+	successResponse as purgeCacheSuccessResponse,
+} from './purge-cache';
 
 interface ScheduledEvent {
 	scheduledTime: number;
