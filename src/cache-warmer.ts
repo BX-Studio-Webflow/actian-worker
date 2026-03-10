@@ -48,8 +48,6 @@ export async function getUrlsFromSitemap(domain: string): Promise<string[]> {
 	const sitemapUrl = `https://${domain}/sitemap.xml`;
 
 	try {
-		console.log(`Fetching sitemap from ${sitemapUrl}`);
-
 		const response = await fetch(sitemapUrl, {
 			headers: {
 				'User-Agent': 'Mozilla/5.0 (compatible; Cloudflare-Cache-Warmer)',
@@ -81,7 +79,6 @@ export async function getUrlsFromSitemap(domain: string): Promise<string[]> {
 			return getFallbackUrls(domain);
 		}
 
-		console.log(`Successfully extracted ${urls.length} URLs from sitemap`);
 		return urls;
 	} catch (error) {
 		console.error('Sitemap fetch error:', (error as Error).message);
@@ -94,7 +91,7 @@ export async function getUrlsFromSitemap(domain: string): Promise<string[]> {
  */
 function getFallbackUrls(domain: string): string[] {
 	const urls = FALLBACK_PATHS.map((path) => `https://${domain}${path}`);
-	console.log(`Using ${urls.length} fallback URLs`);
+
 	return urls;
 }
 
@@ -108,13 +105,9 @@ function getFallbackUrls(domain: string): string[] {
 export async function warmCache(urls: string[], batchSize: number = DEFAULT_BATCH_SIZE): Promise<WarmResult[]> {
 	const results: WarmResult[] = [];
 
-	console.log(`Warming cache with batch size of ${batchSize}`);
-
 	// Process URLs in batches to avoid overwhelming the origin
 	for (let i = 0; i < urls.length; i += batchSize) {
 		const batch = urls.slice(i, i + batchSize);
-
-		console.log(`Processing batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(urls.length / batchSize)}`);
 
 		const batchPromises = batch.map((url) => warmSingleUrl(url));
 		const batchResults = await Promise.all(batchPromises);

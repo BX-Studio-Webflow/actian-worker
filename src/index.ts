@@ -332,10 +332,21 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
 			return handleCachePurge(request, env);
 		}
 
+		// In local dev (wrangler dev), the request URL points to localhost which would
+		// loop back to the worker. Rewrite to the configured DOMAIN so it fetches the real origin.
+		let originRequest = request;
+		if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') {
+			const originUrl = new URL(request.url);
+			originUrl.hostname = config.DOMAIN;
+			originUrl.protocol = 'https:';
+			originUrl.port = '';
+			originRequest = new Request(originUrl.toString(), request);
+		}
+
 		// Fetch the original response from origin with caching enabled
 		// When progressive sections are enabled, don't cache the main HTML (only cache sections)
 		// Otherwise, use cf.cacheEverything to leverage Cloudflare's edge cache
-		const response = await fetch(request, {
+		const response = await fetch(originRequest, {
 			cf: config.PROGRESSIVE_SECTIONS_ENABLED
 				? {
 						// No caching for main HTML when sections are extracted
@@ -369,6 +380,18 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
 	} catch (error) {
 		// On any error, fail open - return original request
 		console.error('Worker error:', (error as Error).message, (error as Error).stack);
+		try {
+			const config = getConfig(env, request);
+			const fallbackUrl = new URL(request.url);
+			if (fallbackUrl.hostname === 'localhost' || fallbackUrl.hostname === '127.0.0.1') {
+				fallbackUrl.hostname = config.DOMAIN;
+				fallbackUrl.protocol = 'https:';
+				fallbackUrl.port = '';
+				return fetch(new Request(fallbackUrl.toString(), request));
+			}
+		} catch {
+			// ignore
+		}
 		return fetch(request);
 	}
 }
@@ -1992,7 +2015,6 @@ interface ScheduledEvent {
  */
 async function handleScheduled(event: ScheduledEvent, env: Env, _ctx: ExecutionContext): Promise<void> {
 	const startTime = Date.now();
-	console.log(`Cache warming started at ${new Date(event.scheduledTime).toISOString()}`);
 
 	try {
 		// Get domain from config
@@ -2003,7 +2025,6 @@ async function handleScheduled(event: ScheduledEvent, env: Env, _ctx: ExecutionC
 
 		// Fetch URLs from sitemap
 		const urls = await getUrlsFromSitemap(domain);
-		console.log(`Found ${urls.length} URLs to warm`);
 
 		// Warm cache (batch size of 5)
 		const results = await warmCache(urls, 5);
