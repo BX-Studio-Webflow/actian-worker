@@ -1,7 +1,7 @@
 import { DEFAULT_LINK_TTL_SECONDS, MAX_JSON_BODY_BYTES, parseAllowlist, parseCsvList, parsePositiveInt } from './config';
 import { allowedOrigin, preflightResponse, withCors } from './cors';
 import { jsonError, jsonOk, streamDownload } from './download';
-import { resolveObjectKey } from './files';
+import { mergedAllowlist, resolveObjectKey } from './files';
 import { evaluateEmailGate, evaluateRequestGate } from './gate';
 import { parseDownloadToken, signDownload, toDownloadPath, verifyDownload } from './token';
 
@@ -59,7 +59,7 @@ async function issueDownloadLink(request: Request, env: Env, url: URL): Promise<
 		return gatedError(emailGate.reason);
 	}
 
-	const objectKey = resolveObjectKey(file, parseAllowlist(env.ALLOWED_FILES));
+	const objectKey = resolveObjectKey(file, mergedAllowlist(parseAllowlist(env.ALLOWED_FILES)));
 	if (!objectKey) {
 		return jsonError(400, 'invalid_file', 'Unknown or invalid file.');
 	}
@@ -101,7 +101,7 @@ async function handleDownload(request: Request, env: Env, url: URL): Promise<Res
 		return jsonError(401, 'invalid_token', 'Download link is invalid or expired.');
 	}
 
-	const objectKey = resolveObjectKey(token.file, parseAllowlist(env.ALLOWED_FILES));
+	const objectKey = resolveObjectKey(token.file, mergedAllowlist(parseAllowlist(env.ALLOWED_FILES)));
 	if (!objectKey || objectKey !== token.file) {
 		return jsonError(401, 'invalid_token', 'Download link is invalid or expired.');
 	}

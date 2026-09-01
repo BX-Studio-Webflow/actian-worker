@@ -1,11 +1,14 @@
 import { requestDownloadLink } from '../../shared/api';
 
+const EMAIL_STORAGE_KEY = 'actian-trial-email';
+const DOWNLOAD_LINK_SELECTOR = '.item-trial_download a.cta-main';
+
 function currentScript(): HTMLScriptElement | null {
 	if (document.currentScript instanceof HTMLScriptElement) {
 		return document.currentScript;
 	}
 
-	const scripts = document.querySelectorAll<HTMLScriptElement>('script[src]');
+	const scripts = document.querySelectorAll<HTMLScriptElement>('script[src*="download"]');
 	return scripts[scripts.length - 1] ?? null;
 }
 
@@ -26,50 +29,104 @@ function apiOrigin(script: HTMLScriptElement | null): string {
 	return '';
 }
 
-function fileId(script: HTMLScriptElement | null, formEl?: HTMLElement): string {
-	return formEl?.getAttribute('data-download-file') || script?.dataset.file || '';
+function storeEmail(email: string): void {
+	const trimmed = email.trim();
+	if (trimmed) {
+		sessionStorage.setItem(EMAIL_STORAGE_KEY, trimmed);
+	}
 }
 
-function bindMarketo(script: HTMLScriptElement | null): boolean {
+function readEmail(): string {
+	const stored = sessionStorage.getItem(EMAIL_STORAGE_KEY);
+	if (stored) {
+		return stored;
+	}
+
+	const input = document.querySelector<HTMLInputElement>('input[name="Email"], input#Email, input[type="email"]');
+	return input?.value.trim() || '';
+}
+
+function fileFromLink(link: HTMLAnchorElement): string {
+	const attributed = link.getAttribute('data-download-file');
+	if (attributed) {
+		return attributed.trim();
+	}
+
+	try {
+		const url = new URL(link.href, window.location.href);
+		return decodeURIComponent(url.pathname.split('/').pop() || '');
+	} catch {
+		return '';
+	}
+}
+
+function scrollToForm(): void {
+	const form = document.querySelector('.mktoForm, form');
+	if (form) {
+		form.scrollIntoView({ behavior: 'smooth', block: 'center' });
+	}
+}
+
+function bindDownloads(script: HTMLScriptElement | null): void {
+	const origin = apiOrigin(script);
+	if (!origin) {
+		console.error('Trial downloads: set data-api on the script tag to the Worker origin.');
+		return;
+	}
+
+	document.addEventListener('click', (event) => {
+		const target = event.target;
+		if (!(target instanceof Element)) {
+			return;
+		}
+
+		const link = target.closest<HTMLAnchorElement>(DOWNLOAD_LINK_SELECTOR);
+		if (!link) {
+			return;
+		}
+
+		const file = fileFromLink(link);
+		const email = readEmail();
+		if (!file) {
+			return;
+		}
+
+		event.preventDefault();
+		event.stopPropagation();
+
+		if (!email) {
+			scrollToForm();
+			return;
+		}
+
+		void requestDownloadLink(origin, email, file)
+			.then((result) => {
+				if (result.url) {
+					window.location.assign(result.url);
+					return;
+				}
+
+				console.error('Download was not issued', result);
+			})
+			.catch((error: unknown) => {
+				console.error('Download request failed', error);
+			});
+	});
+}
+
+function bindMarketo(): void {
 	if (!window.MktoForms2) {
-		return false;
+		return;
 	}
 
 	window.MktoForms2.whenReady((form) => {
 		form.onSuccess((values) => {
-			const email = values.Email || values.email || '';
-			const formEl = form.getFormElem()[0];
-			const file = fileId(script, formEl);
-			const origin = apiOrigin(script);
-
-			if (!email || !file || !origin) {
-				return true;
-			}
-
-			void requestDownloadLink(origin, email, file)
-				.then((result) => {
-					if (result.url) {
-						window.location.assign(result.url);
-						return;
-					}
-
-					console.error('Download was not issued', result);
-				})
-				.catch((error: unknown) => {
-					console.error('Download request failed', error);
-				});
-
+			storeEmail(values.Email || values.email || '');
 			return true;
 		});
 	});
-
-	return true;
 }
 
 const script = currentScript();
-
-if (!bindMarketo(script)) {
-	document.addEventListener('DOMContentLoaded', () => {
-		bindMarketo(script);
-	});
-}
+bindMarketo();
+bindDownloads(script);

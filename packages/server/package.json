@@ -15,9 +15,13 @@
 		"lint": "eslint ./src && prettier --check ./src",
 		"lint:fix": "eslint ./src --fix && prettier --write ./src",
 		"check": "tsc --noEmit",
-		"cf-typegen": "wrangler types"
+		"cf-typegen": "wrangler types",
+		"upload": "node ./scripts/upload-r2.mjs",
+		"upload:dry": "node ./scripts/upload-r2.mjs --dry-run"
 	},
 	"devDependencies": {
+		"@aws-sdk/client-s3": "^3.943.0",
+		"@aws-sdk/lib-storage": "^3.943.0",
 		"@cloudflare/vitest-pool-workers": "^0.8.19",
 		"@eslint/js": "^9.39.1",
 		"eslint": "^9.39.1",

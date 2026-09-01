@@ -1,6 +1,8 @@
 import { createExecutionContext, env, waitOnExecutionContext } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
 
+import { FILE_CATALOG } from '../src/catalog';
+import { mergedAllowlist, resolveObjectKey } from '../src/files';
 import { isBlockedCountry, isBlockedEmailDomain, isBlockedIp, normalizeEmail } from '../src/gate';
 import worker from '../src/index';
 import { signDownload, toDownloadPath, verifyDownload } from '../src/token';
@@ -36,6 +38,16 @@ async function fetchWorker(request: Request): Promise<Response> {
 	await waitOnExecutionContext(ctx);
 	return response;
 }
+
+describe('file catalog', () => {
+	it('maps Webflow TIBCO filenames and short aliases to R2 keys', () => {
+		const allowlist = mergedAllowlist();
+		expect(resolveObjectKey('jrs-linux', allowlist)).toBe('10.0.0/js-jrs_10.0.0_linux_x86_64.run');
+		expect(resolveObjectKey('js-jrs-dev_10.0.0_win_x86_64.exe', allowlist)).toBe('10.0.0/js-jrs_10.0.0_win_x86_64.exe');
+		expect(resolveObjectKey('js-jrio-pro_10.0.0_macos_x86_64.zip', allowlist)).toBe('10.0.0/js-jrio-pro_10.0.0_macos_x86_64.zip');
+		expect(FILE_CATALOG['jss-windows']).toBe('10.0.0/js-jss_10.0.0_windows_x86_64.exe');
+	});
+});
 
 describe('email domain gating', () => {
 	it('blocks consumer and free-mail labels from the client list', () => {
