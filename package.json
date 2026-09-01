@@ -1,11 +1,11 @@
 {
-	"name": "webflow-wp-proxy",
+	"name": "actian-worker",
 	"version": "0.0.0",
 	"private": true,
 	"scripts": {
 		"deploy": "wrangler deploy --env production",
 		"dev": "wrangler dev --env development",
-		"build": "wrangler deploy --dry-run",
+		"build": "wrangler deploy --dry-run --env production",
 		"start": "wrangler dev",
 		"test": "vitest",
 		"lint": "eslint ./src && prettier --check ./src",

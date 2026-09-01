@@ -1,60 +1,68 @@
 /**
- * For more details on how to configure Wrangler, refer to:
- * https://developers.cloudflare.com/workers/wrangler/configuration/
+ * Actian trial-download Worker.
+ *
+ * Files live in a private R2 bucket. Download links are HMAC-signed and
+ * short-lived. Country, IP, and business-email gating are enforced on both
+ * link issuance and download. TOKEN_SECRET must be set with:
+ *   wrangler secret put TOKEN_SECRET --env production
  */
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
-	"name": "webflow-wp-proxy",
+	"name": "actian-trial-downloads",
 	"main": "src/index.ts",
-	"compatibility_date": "2025-11-17",
+	"compatibility_date": "2026-09-01",
 	"observability": {
-		"enabled": true
+		"enabled": true,
+		"head_sampling_rate": 1
 	},
+	"vars": {
+		"CORS_ORIGINS": "*",
+		"LINK_TTL_SECONDS": "600",
+		"ALLOWED_FILES": "{}",
+		"BLOCKED_IPS": "",
+		"EXTRA_BLOCKED_COUNTRIES": "",
+		"EXTRA_BLOCKED_EMAIL_LABELS": ""
+	},
+	"r2_buckets": [
+		{
+			"binding": "DOWNLOADS",
+			"bucket_name": "actian-trial-downloads"
+		}
+	],
 	"env": {
 		"production": {
-			"name": "webflow-wp-proxy-prod",
-			"triggers": {
-				"crons": ["0 * * * *"]
-			},
+			"name": "actian-trial-downloads",
 			"vars": {
-				"DOMAIN": "www.bxstudio.cloud",
-				"IMAGE_FORMAT": "auto",
-				"IMAGE_QUALITY": "85",
-				"OG_IMAGE_FORMAT": "jpeg",
-				"OG_IMAGE_QUALITY": "80",
-				"EDGE_CACHE_TTL": "31536000",
-				"BROWSER_CACHE_TTL": "15778476",
-				"CATCH_ALL_EXTERNAL": "false",
-				"SITE_ID": "69259def79719995b09e699d",
-				"PURIFIED_CSS_ENABLED": "true",
-				"MINIFIED_CSS_LINK": "https://storage.bxstudio.cloud/styles.pure.css",
-				"PROGRESSIVE_SECTIONS_ENABLED": "true",
-				"OPTIMISE_LANDING_PAGE_ONLY": "true",
-				"DISPATCH_EVENT": "DOM_LOADED",
-				"CF_ZONE_ID": "b546996735d873188683fc53ccb2df41",
-				"CF_API_TOKEN": "iXtEAlzJHoN9941z0VL3BkVtbRaFz9l6NQGy5JgN"
-			}
+				"CORS_ORIGINS": "*",
+				"LINK_TTL_SECONDS": "600",
+				"ALLOWED_FILES": "{}",
+				"BLOCKED_IPS": "",
+				"EXTRA_BLOCKED_COUNTRIES": "",
+				"EXTRA_BLOCKED_EMAIL_LABELS": ""
+			},
+			"r2_buckets": [
+				{
+					"binding": "DOWNLOADS",
+					"bucket_name": "actian-trial-downloads"
+				}
+			]
 		},
 		"development": {
-			"name": "webflow-wp-proxy-dev",
+			"name": "actian-trial-downloads-dev",
 			"vars": {
-				"DOMAIN": "www.bxstudio.cloud",
-				"IMAGE_FORMAT": "auto",
-				"IMAGE_QUALITY": "85",
-				"OG_IMAGE_FORMAT": "jpeg",
-				"OG_IMAGE_QUALITY": "80",
-				"EDGE_CACHE_TTL": "31536000",
-				"BROWSER_CACHE_TTL": "15778476",
-				"CATCH_ALL_EXTERNAL": "false",
-				"SITE_ID": "69259def79719995b09e699d",
-				"PURIFIED_CSS_ENABLED": "true",
-				"MINIFIED_CSS_LINK": "https://storage.bxstudio.cloud/styles.pure.css",
-				"PROGRESSIVE_SECTIONS_ENABLED": "true",
-				"OPTIMISE_LANDING_PAGE_ONLY": "true",
-				"DISPATCH_EVENT": "BOTH",
-				"CF_ZONE_ID": "b546996735d873188683fc53ccb2df41",
-				"CF_API_TOKEN": "iXtEAlzJHoN9941z0VL3BkVtbRaFz9l6NQGy5JgN"
-			}
+				"CORS_ORIGINS": "*",
+				"LINK_TTL_SECONDS": "600",
+				"ALLOWED_FILES": "{}",
+				"BLOCKED_IPS": "",
+				"EXTRA_BLOCKED_COUNTRIES": "",
+				"EXTRA_BLOCKED_EMAIL_LABELS": ""
+			},
+			"r2_buckets": [
+				{
+					"binding": "DOWNLOADS",
+					"bucket_name": "actian-trial-downloads-dev"
+				}
+			]
 		}
 	}
 }

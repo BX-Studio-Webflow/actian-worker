@@ -6,23 +6,14 @@ declare namespace Cloudflare {
 		mainModule: typeof import("./src/index");
 	}
 	interface Env {
-		DOMAIN: "www.bxstudio.cloud";
-		IMAGE_FORMAT: "auto";
-		IMAGE_QUALITY: "85";
-		OG_IMAGE_FORMAT: "jpeg";
-		OG_IMAGE_QUALITY: "80";
-		EDGE_CACHE_TTL: "31536000";
-		BROWSER_CACHE_TTL: "15778476";
-		CATCH_ALL_EXTERNAL: "false";
-		SITE_ID: "69259def79719995b09e699d";
-		PURIFIED_CSS_ENABLED: "true";
-		MINIFIED_CSS_LINK: "https://storage.bxstudio.cloud/styles.pure.css";
-		PROGRESSIVE_SECTIONS_ENABLED: "true";
-		OPTIMISE_LANDING_PAGE_ONLY: "true";
-		DISPATCH_EVENT: "DOM_LOADED" | "BOTH";
-		WEBFLOW_URL: string;
-		OTHER_URL: string;
-		WEBFLOW_ROUTES: string;
+		CORS_ORIGINS: string;
+		LINK_TTL_SECONDS: string;
+		ALLOWED_FILES: string;
+		BLOCKED_IPS: string;
+		EXTRA_BLOCKED_COUNTRIES: string;
+		EXTRA_BLOCKED_EMAIL_LABELS: string;
+		TOKEN_SECRET: string;
+		DOWNLOADS: R2Bucket;
 	}
 }
 interface Env extends Cloudflare.Env {}
