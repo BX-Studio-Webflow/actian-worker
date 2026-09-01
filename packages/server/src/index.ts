@@ -1,7 +1,6 @@
 import { DEFAULT_LINK_TTL_SECONDS, MAX_JSON_BODY_BYTES, parseAllowlist, parseCsvList, parsePositiveInt } from './config';
 import { allowedOrigin, preflightResponse, withCors } from './cors';
 import { jsonError, jsonOk, streamDownload } from './download';
-import { EMBED_SCRIPT } from './embed';
 import { resolveObjectKey } from './files';
 import { evaluateEmailGate, evaluateRequestGate } from './gate';
 import { parseDownloadToken, signDownload, toDownloadPath, verifyDownload } from './token';
@@ -19,15 +18,6 @@ export default {
 		try {
 			if (url.pathname === '/health' && method === 'GET') {
 				return withCors(jsonOk({ status: 'ok' }), origin);
-			}
-
-			if (url.pathname === '/embed.js' && method === 'GET') {
-				return new Response(EMBED_SCRIPT, {
-					headers: {
-						'Content-Type': 'text/javascript; charset=utf-8',
-						'Cache-Control': 'public, max-age=300',
-					},
-				});
 			}
 
 			if (url.pathname === '/api/link' && method === 'POST') {

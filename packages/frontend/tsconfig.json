@@ -1,0 +1,19 @@
+{
+	"compilerOptions": {
+		"target": "es2021",
+		"lib": ["es2021", "DOM", "DOM.Iterable"],
+		"module": "es2022",
+		"moduleResolution": "Bundler",
+		"rootDir": ".",
+		"baseUrl": "./",
+		"resolveJsonModule": true,
+		"isolatedModules": true,
+		"allowSyntheticDefaultImports": true,
+		"forceConsistentCasingInFileNames": true,
+		"strict": true,
+		"skipLibCheck": true,
+		"noEmit": true
+	},
+	"include": ["./**/*.ts"],
+	"exclude": ["node_modules", "dist"]
+}
