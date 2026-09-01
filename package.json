@@ -17,7 +17,7 @@
 		"lint": "pnpm -r lint",
 		"lint:fix": "pnpm -r lint:fix",
 		"check": "pnpm --filter @actian/frontend check && pnpm --filter @actian/server check",
-		"test": "pnpm --filter @actian/server test -- --run",
+		"test": "pnpm --filter @actian/server test",
 		"cf-typegen": "pnpm --filter @actian/server cf-typegen",
 		"wrangler:login": "wrangler login",
 		"wrangler:logout": "wrangler logout"
