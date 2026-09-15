@@ -5,6 +5,10 @@
  * short-lived. Country, IP, and business-email gating are enforced on both
  * link issuance and download. TOKEN_SECRET must be set with:
  *   wrangler secret put TOKEN_SECRET --env production
+ *
+ * POST /webhook/marketo logs every Marketo form submission for attribution
+ * (no gating applied). MARKETO_WEBHOOK_SECRET must be set with:
+ *   wrangler secret put MARKETO_WEBHOOK_SECRET --env production
  */
 {
 	"$schema": "node_modules/wrangler/config-schema.json",

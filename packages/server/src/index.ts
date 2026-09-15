@@ -4,6 +4,7 @@ import { jsonError, jsonOk, streamDownload } from './download';
 import { mergedAllowlist, resolveObjectKey } from './files';
 import { evaluateEmailGate, evaluateRequestGate } from './gate';
 import { parseDownloadToken, signDownload, toDownloadPath, verifyDownload } from './token';
+import { readMarketoLead, verifyWebhookSecret } from './webhook';
 
 export default {
 	async fetch(request: Request, env: Env): Promise<Response> {
@@ -26,6 +27,10 @@ export default {
 
 			if (url.pathname === '/download' && (method === 'GET' || method === 'HEAD')) {
 				return withCors(await handleDownload(request, env, url), origin);
+			}
+
+			if (url.pathname === '/webhook/marketo' && method === 'POST') {
+				return withCors(await handleMarketoWebhook(request, env, url), origin);
 			}
 
 			return withCors(jsonError(404, 'not_found', 'Not found.'), origin);
@@ -107,6 +112,28 @@ async function handleDownload(request: Request, env: Env, url: URL): Promise<Res
 	}
 
 	return streamDownload(env.DOWNLOADS, objectKey, request);
+}
+
+async function handleMarketoWebhook(request: Request, env: Env, url: URL): Promise<Response> {
+	if (!env.MARKETO_WEBHOOK_SECRET) {
+		console.error('MARKETO_WEBHOOK_SECRET is not configured');
+		return jsonError(500, 'misconfigured', 'Webhook is not configured.');
+	}
+
+	if (!verifyWebhookSecret(request, url, env.MARKETO_WEBHOOK_SECRET)) {
+		return jsonError(401, 'invalid_secret', 'Invalid webhook secret.');
+	}
+
+	const lead = await readMarketoLead(request);
+	if (!lead) {
+		return jsonError(400, 'invalid_request', 'Expected JSON with an email field.');
+	}
+
+	// Attribution only — no gating here. Marketo posts this for every form
+	// fill regardless of whether the visitor later clears the download gates.
+	console.log('Marketo lead submission:', JSON.stringify({ ...lead, receivedAt: new Date().toISOString() }));
+
+	return jsonOk({ received: true });
 }
 
 function gatedError(reason: string | undefined): Response {
