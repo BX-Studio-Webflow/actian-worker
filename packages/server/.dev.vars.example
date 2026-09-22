@@ -1,8 +1,10 @@
-TOKEN_SECRET=replace-with-a-long-random-string
-
 # Shared secret the Marketo Call Webhook step must send back (header
 # X-Webhook-Secret or ?secret= query param) to POST /webhook/marketo
 MARKETO_WEBHOOK_SECRET=replace-with-a-long-random-string
+
+# Keyed HMAC secret for correlating Marketo callbacks and download requests.
+# This must be distinct from TOKEN_SECRET and MARKETO_WEBHOOK_SECRET.
+LEAD_HASH_SECRET=replace-with-a-long-random-string
 
 # S3-compatible R2 upload (packages/server/scripts/upload-r2.mjs)
 R2_ACCOUNT_ID=

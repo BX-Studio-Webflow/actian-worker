@@ -16,20 +16,19 @@ The page is OS tabs (Windows / Mac / Linux) with four CTAs each. Those CTAs curr
 <script
 	type="module"
 	src="http://localhost:3000/pages/download/index.js"
-	data-api="https://actian-trial-downloads.<account>.workers.dev"
 ></script>
 ```
 
 In production, point `src` at the deployed frontend asset.
 
-The production frontend asset is delivered via jsDelivr. OneTrust must not auto-block jsDelivr or the Worker origin supplied in `data-api`; both are required to issue and serve gated downloads.
+The production frontend asset is delivered via jsDelivr and uses the Worker origin compiled into the script. OneTrust must not auto-block jsDelivr or that Worker origin.
 
 What the script does:
 
 1. Marketo `onSuccess` stores the business email (lead is already in Marketo).
 2. Clicks on `.item-trial_download a.cta-main` are intercepted (`preventDefault` so TIBCO is never hit).
 3. The installer is identified from `data-download-file` if present, otherwise from the TIBCO filename in the existing `href`.
-4. `POST /api/link` runs country / IP / email gating and returns a 10-minute signed Worker URL.
+4. `POST /api/link` runs country / IP / email gating and returns a 10-minute opaque Worker URL.
 5. The browser navigates to that URL; the Worker streams the private R2 object.
 
 Optional per-button override (only if an href filename is wrong — Mac Studio/Web Studio currently share bad TIBCO URLs):
@@ -55,7 +54,7 @@ Optional per-button override (only if an href filename is wrong — Mac Studio/W
 | Linux | Web Studio | `jrws-linux` | `10.0.0/js-jrws-pro_10.0.0_linux_x86_64.zip` |
 | Linux | IO Professional | `jrio-linux` | `10.0.0/js-jrio-pro_10.0.0_linux_x86_64.zip` |
 
-Catalog lives in `packages/server/src/catalog.ts`. TIBCO filenames from the current hrefs are also registered so the existing markup works.
+Catalog lives in `packages/server/src/utils/catalog.ts`. TIBCO filenames from the current hrefs are also registered so the existing markup works.
 
 **On disk today** (Chris extract) only these installers exist. The rest 404 until uploaded:
 
@@ -76,7 +75,8 @@ R2_ACCOUNT_ID=...
 R2_ACCESS_KEY_ID=...
 R2_SECRET_ACCESS_KEY=...
 R2_BUCKET_NAME=actian-trial-downloads
-TOKEN_SECRET=...
+MARKETO_WEBHOOK_SECRET=...
+LEAD_HASH_SECRET=...
 ```
 
 4. Preview then upload (multipart, required for 300MB–1GB files):
@@ -115,29 +115,28 @@ Marketo still captures the lead before the download is allowed or refused.
 
 The solution replaces direct trial-download links with a gated, short-lived download flow. Installers live in a private Cloudflare R2 bucket and can only be downloaded through a Cloudflare Worker.
 
-The frontend module is TypeScript compiled with esbuild and deployed as a static JavaScript asset. The production asset is delivered through jsDelivr and loaded by the Webflow trial page. The Cloudflare Worker issues and validates signed download URLs, applies access gates, and streams installer files from its private R2 binding. Marketo remains the form and lead-capture system; its webhook endpoint is separate from download authorization.
+The frontend module is TypeScript compiled with esbuild and deployed as a static JavaScript asset. The production asset is delivered through jsDelivr and loaded by the Webflow trial page. The Cloudflare Worker applies access gates, writes short-lived opaque download grants to D1, and streams installer files from its private R2 binding. Marketo remains the form and lead-capture system; authenticated callbacks are correlated through a keyed email hash.
 
 ### Browser request flow
 
-1. Webflow loads the production module from jsDelivr. The script tag's `data-api` attribute provides the Worker origin; `ACTIAN_API_ORIGIN` is a build-time fallback.
+1. Webflow loads the production module from jsDelivr. The Worker origin is configured in the deployed module.
 2. When Marketo's `MktoForms2` API signals a successful form submission, the module stores the submitted email in `sessionStorage` under `actian-trial-email`.
 3. A visitor clicks a CTA matching `.item-trial_download a.cta-main`.
 4. The module prevents the CTA's default navigation. It obtains the installer from `data-download-file`, or derives the filename from the existing CTA URL. Existing TIBCO URLs can remain in Webflow markup without being visited.
 5. The module reads the email from session storage, falling back to the page's email input. If no email is available, it scrolls to the form instead of requesting a download.
 6. The module sends `POST <Worker origin>/api/link` with `{ "email": "...", "file": "..." }`.
-7. If successful, it navigates to the returned signed URL. The Worker validates that URL and streams the R2 object as an attachment.
+7. If successful, it navigates to the returned opaque URL. The Worker resolves the active D1 grant and streams the R2 object as an attachment.
 
 The browser never calls R2 directly. It makes the API request and then navigates to the Worker download endpoint.
 
 ### Webflow requirements
 
-Use a module script tag equivalent to the following. In production, `src` is the built jsDelivr asset and `data-api` is the deployed Worker hostname or custom domain.
+Use a module script tag equivalent to the following. In production, `src` is the built jsDelivr asset.
 
 ```html
 <script
 	type="module"
 	src="https://cdn.jsdelivr.net/.../pages/download/index.js"
-	data-api="https://downloads.example.com"
 ></script>
 ```
 
@@ -148,13 +147,13 @@ Each download CTA must have `cta-main` inside an `.item-trial_download` element.
 | Route | Method | Purpose |
 | --- | --- | --- |
 | `/health` | `GET` | Returns `{ "ok": true, "status": "ok" }` for a health check. |
-| `/api/link` | `POST` | Validates the file and requester, then returns a signed download URL. |
-| `/download` | `GET`, `HEAD` | Validates the token and streams the private R2 object. |
-| `/webhook/marketo` | `POST` | Receives Marketo lead payloads for attribution. Server-to-server only. |
+| `/api/link` | `POST` | Validates the file and requester, then creates an opaque D1-backed download grant. |
+| `/download/:token` | `GET`, `HEAD` | Resolves an active grant and streams the private R2 object. |
+| `/webhook/marketo` | `POST` | Persists authenticated callback metadata for attribution. Server-to-server only. |
 
-`/api/link` rejects malformed JSON bodies larger than 8 KiB, invalid email addresses, blocked emails/countries/IPs, and unknown files. It first verifies the R2 object exists, then returns a URL with `f` (R2 key), `e` (Unix expiry), `n` (random UUID nonce), and `s` (hexadecimal HMAC signature). The URL lifetime defaults to 600 seconds and is configurable with `LINK_TTL_SECONDS`.
+`/api/link` rejects malformed JSON bodies larger than 8 KiB, invalid email addresses, blocked emails/countries/IPs, and unknown files. It first verifies the R2 object exists, then stores the requested file and canonical R2 key in a D1 grant. The URL lifetime defaults to 600 seconds and is configurable with `LINK_TTL_SECONDS`.
 
-`/download` requires a valid, unexpired signature. It passes `Range` and conditional request headers to R2, supports partial content responses, and returns `Cache-Control: private, no-store`, `Accept-Ranges: bytes`, `X-Content-Type-Options: nosniff`, attachment `Content-Disposition`, and R2 content metadata.
+`/download/:token` requires an active, unexpired grant. It passes `Range` and conditional request headers to R2, supports partial content responses, and returns `Cache-Control: private, no-store`, `Accept-Ranges: bytes`, `X-Content-Type-Options: nosniff`, attachment `Content-Disposition`, and R2 content metadata.
 
 ### Security and gating
 
@@ -164,9 +163,9 @@ The Worker applies country and IP checks on both `/api/link` and `/download`. Co
 
 Email is validated and gated on `/api/link`. The default policy rejects consumer/free-mail domains; `EXTRA_BLOCKED_EMAIL_LABELS` can extend that list.
 
-The Worker signs the object key, expiry, and nonce using HMAC-SHA-256, then verifies signatures using a timing-safe comparison. `TOKEN_SECRET` is required to issue and validate download links; a missing secret fails closed with a configuration error.
+The Worker stores canonical R2 object keys only after server-side catalog resolution and R2 existence checks. `LEAD_HASH_SECRET` keys HMAC-SHA-256 email hashes used to correlate Marketo callbacks and download requests without storing raw email addresses. A missing secret fails closed with a configuration error.
 
-`/webhook/marketo` is not a download gate. It requires `MARKETO_WEBHOOK_SECRET` in `X-Webhook-Secret` or a `secret` query parameter, then logs valid lead payloads for attribution. Prefer the header so the secret is not placed in URLs or logs.
+`/webhook/marketo` is not a download gate. It requires `MARKETO_WEBHOOK_SECRET` in `X-Webhook-Secret` or a `secret` query parameter, then records authenticated callbacks in D1. It retains the callback's field names and lead ID, not raw email or submitted field values. Prefer the header so the secret is not placed in URLs or logs.
 
 ### CORS and OneTrust
 
@@ -185,8 +184,10 @@ If jsDelivr is blocked, the click interceptor does not load and CTAs navigate to
 
 ### Configuration, deployment, and release validation
 
-Worker bindings and non-secret configuration live in `packages/server/wrangler.jsonc`. Store `TOKEN_SECRET` and `MARKETO_WEBHOOK_SECRET` as Cloudflare secrets with `wrangler secret put` for every deployed environment. Keep `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, and `R2_BUCKET_NAME` only in `packages/server/.dev.vars`; do not commit them. Use different values per environment and rotate any secret exposed in chat, source control, an issue, or logs.
+Worker bindings and non-secret configuration live in `packages/server/wrangler.jsonc`. Store `LEAD_HASH_SECRET` and `MARKETO_WEBHOOK_SECRET` as Cloudflare secrets with `wrangler secret put` for every deployed environment. Keep `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, and `R2_BUCKET_NAME` only in `packages/server/.dev.vars`; do not commit them. Use different values per environment and rotate any secret exposed in chat, source control, an issue, or logs.
+
+Generate migrations with `pnpm --filter @actian/server db:generate`. Apply the checked-in migration before deploying the Worker: `pnpm --filter @actian/server db:migrate:development` or `pnpm --filter @actian/server db:migrate:production`.
 
 `pnpm deploy:frontend` publishes the compiled static asset to Cloudflare Pages; jsDelivr can then deliver that production asset. `pnpm deploy:server` deploys the production Worker. `pnpm upload` transfers mapped installers to the private bucket through R2's S3-compatible endpoint and is not part of the visitor request flow.
 
-Before release, confirm the Webflow script loads from jsDelivr, the `data-api` Worker origin is correct and OneTrust-permitted, an eligible form submission returns a signed link, the Worker streams the file, and blocked email/country/IP cases are refused.
+Before release, confirm the Webflow script loads from jsDelivr, the Worker origin is OneTrust-permitted, an eligible form submission returns an opaque link, the Worker streams the file, and blocked email/country/IP cases are refused.

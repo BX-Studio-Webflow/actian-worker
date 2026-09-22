@@ -9,6 +9,7 @@ export default defineWorkersConfig({
 				miniflare: {
 					bindings: {
 						TOKEN_SECRET: 'test-secret-do-not-use-in-production',
+						LEAD_HASH_SECRET: 'test-lead-hash-secret-do-not-use-in-production',
 						ALLOWED_FILES: '{"trials/sample.bin":"trials/sample.bin"}',
 					},
 				},

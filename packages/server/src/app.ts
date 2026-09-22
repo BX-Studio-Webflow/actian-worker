@@ -14,13 +14,13 @@ app.use('*', cors, requestId, requestLog);
 
 app.get('/health', () => jsonOk({ status: 'ok' }));
 app.post('/api/link', issueDownloadLink);
-app.on(['GET', 'HEAD'], '/download', download);
+app.on(['GET', 'HEAD'], '/download/:token', download);
 app.post('/webhook/marketo', receiveMarketoWebhook);
 
 app.notFound(() => jsonError(404, 'not_found', 'Not found.'));
 app.onError((error) => {
-    console.error('Worker error:', error.message);
-    return jsonError(500, 'internal_error', 'Request failed.');
+	console.error('Worker error:', error.message);
+	return jsonError(500, 'internal_error', 'Request failed.');
 });
 
 export default app;

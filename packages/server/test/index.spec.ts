@@ -1,14 +1,13 @@
 import { createExecutionContext, env, waitOnExecutionContext } from 'cloudflare:test';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import worker from '../src/index';
+import migration from '../src/schema/migrations/0000_icy_chat.sql?raw';
 import { FILE_CATALOG } from '../src/utils/catalog';
 import { mergedAllowlist, resolveObjectKey } from '../src/utils/files';
 import { isBlockedCountry, isBlockedEmailDomain, isBlockedIp, normalizeEmail } from '../src/utils/gate';
-import { signDownload, toDownloadPath, verifyDownload } from '../src/utils/token';
 
 const IncomingRequest = Request<unknown, IncomingRequestCfProperties>;
-const TEST_SECRET = 'test-secret-do-not-use-in-production';
 const FILE_KEY = 'trials/sample.bin';
 const FILE_BODY = 'trial-file-bytes';
 
@@ -38,6 +37,19 @@ async function fetchWorker(request: Request): Promise<Response> {
 	await waitOnExecutionContext(ctx);
 	return response;
 }
+
+beforeAll(async () => {
+	for (const statement of migration.split('--> statement-breakpoint')) {
+		const sql = statement.trim().replace(/;$/, '');
+		if (sql) {
+			await env.DB.prepare(sql).run();
+		}
+	}
+});
+
+beforeEach(async () => {
+	await env.DB.exec('DELETE FROM download_grants; DELETE FROM marketo_webhook_events; DELETE FROM trial_leads;');
+});
 
 describe('file catalog', () => {
 	it('maps Webflow TIBCO filenames and short aliases to R2 keys', () => {
@@ -85,18 +97,8 @@ describe('country and IP gating', () => {
 	});
 });
 
-describe('signed download tokens', () => {
-	it('accepts a fresh signature and rejects expiry or tampering', async () => {
-		const token = await signDownload(TEST_SECRET, FILE_KEY, 60);
-		expect(await verifyDownload(TEST_SECRET, token)).toBe(true);
-		expect(await verifyDownload(TEST_SECRET, { ...token, file: 'other.bin' })).toBe(false);
-		expect(await verifyDownload(TEST_SECRET, { ...token, sig: 'ab' })).toBe(false);
-		expect(await verifyDownload(TEST_SECRET, token, token.exp + 1)).toBe(false);
-	});
-});
-
 describe('download Worker', () => {
-	it('issues a signed link after a cleared business-email submission', async () => {
+	it('persists a canonical opaque grant after a cleared business-email submission', async () => {
 		await putSampleFile();
 
 		const response = await fetchWorker(
@@ -110,7 +112,14 @@ describe('download Worker', () => {
 		expect(response.status).toBe(200);
 		expect(body.ok).toBe(true);
 		expect(body.file).toBe(FILE_KEY);
-		expect(body.url).toContain('/download?');
+		expect(body.url).toMatch(/\/download\/[A-Za-z0-9_-]{40,}$/);
+
+		const grant = await env.DB.prepare('SELECT requested_file, r2_object_key, status FROM download_grants').first<{
+			requested_file: string;
+			r2_object_key: string;
+			status: string;
+		}>();
+		expect(grant).toEqual({ requested_file: FILE_KEY, r2_object_key: FILE_KEY, status: 'active' });
 	});
 
 	it('captures the lead path by refusing consumer email downloads without throwing', async () => {
@@ -133,13 +142,38 @@ describe('download Worker', () => {
 			new IncomingRequest(`https://downloads.example.com/webhook/marketo?secret=${env.MARKETO_WEBHOOK_SECRET}`, {
 				method: 'POST',
 				headers: { 'content-type': 'application/x-www-form-urlencoded; charset=UTF-8' },
-				body: 'email=name%40acme.com&leadId=123',
+				body: 'Email+Address=name%40acme.com&leadId=123',
 				cf: { country: 'US' },
 			}),
 		);
 
 		expect(response.status).toBe(200);
 		expect(await response.json()).toEqual({ ok: true, received: true });
+
+		const event = await env.DB.prepare('SELECT marketo_lead_id, payload FROM marketo_webhook_events').first<{
+			marketo_lead_id: string;
+			payload: string;
+		}>();
+		expect(event?.marketo_lead_id).toBe('123');
+		expect(event?.payload).toBe('{"fields":["Email Address","leadId"]}');
+
+		const lead = await env.DB.prepare('SELECT email_hash FROM trial_leads').first<{ email_hash: string }>();
+		expect(lead?.email_hash).toMatch(/^[A-Za-z0-9_-]{40,}$/);
+	});
+
+	it('correlates Marketo and download requests through one hashed lead', async () => {
+		await putSampleFile();
+		await fetchWorker(
+			new IncomingRequest(`https://downloads.example.com/webhook/marketo?secret=${env.MARKETO_WEBHOOK_SECRET}`, {
+				method: 'POST',
+				headers: { 'content-type': 'application/x-www-form-urlencoded' },
+				body: 'email=name%40acme.com&leadId=123',
+			}),
+		);
+		await fetchWorker(jsonRequest('/api/link', { email: 'Name@Acme.com', file: FILE_KEY }));
+
+		const count = await env.DB.prepare('SELECT COUNT(*) AS count FROM trial_leads').first<{ count: number }>();
+		expect(count?.count).toBe(1);
 	});
 
 	it('refuses blocked countries on both link issuance and download', async () => {
@@ -155,9 +189,10 @@ describe('download Worker', () => {
 		expect(blocked.status).toBe(403);
 		expect(((await blocked.json()) as { error: string }).error).toBe('country_blocked');
 
-		const token = await signDownload(TEST_SECRET, FILE_KEY, 60);
+		const issued = await fetchWorker(jsonRequest('/api/link', { email: 'name@acme.com', file: FILE_KEY }));
+		const issuedBody = (await issued.json()) as { url: string };
 		const download = await fetchWorker(
-			new IncomingRequest(`https://downloads.example.com${toDownloadPath(token)}`, {
+			new IncomingRequest(issuedBody.url, {
 				cf: { country: 'IR' },
 			}),
 		);
@@ -165,12 +200,13 @@ describe('download Worker', () => {
 		expect(((await download.json()) as { error: string }).error).toBe('country_blocked');
 	});
 
-	it('streams the R2 object for a valid token and fails closed otherwise', async () => {
+	it('streams active grants and fails closed for missing, expired, or revoked grants', async () => {
 		await putSampleFile();
-		const token = await signDownload(TEST_SECRET, FILE_KEY, 60);
+		const issued = await fetchWorker(jsonRequest('/api/link', { email: 'name@acme.com', file: FILE_KEY }));
+		const issuedBody = (await issued.json()) as { url: string };
 
 		const allowed = await fetchWorker(
-			new IncomingRequest(`https://downloads.example.com${toDownloadPath(token)}`, {
+			new IncomingRequest(issuedBody.url, {
 				cf: { country: 'US' },
 			}),
 		);
@@ -179,21 +215,27 @@ describe('download Worker', () => {
 		expect(allowed.headers.get('content-disposition')).toContain('sample.bin');
 
 		const missing = await fetchWorker(
-			new IncomingRequest(`https://downloads.example.com/download?f=${FILE_KEY}`, {
+			new IncomingRequest('https://downloads.example.com/download/not-a-grant', {
 				cf: { country: 'US' },
 			}),
 		);
 		expect(missing.status).toBe(401);
 		await missing.json();
 
-		const expired = await signDownload(TEST_SECRET, FILE_KEY, 60);
+		const token = new URL(issuedBody.url).pathname.split('/').at(-1);
+		await env.DB.prepare('UPDATE download_grants SET expires_at = 1 WHERE token = ?').bind(token).run();
 		const expiredResponse = await fetchWorker(
-			new IncomingRequest(`https://downloads.example.com${toDownloadPath({ ...expired, exp: 1, sig: expired.sig })}`, {
+			new IncomingRequest(issuedBody.url, {
 				cf: { country: 'US' },
 			}),
 		);
 		expect(expiredResponse.status).toBe(401);
 		await expiredResponse.json();
+
+		await env.DB.prepare("UPDATE download_grants SET status = 'revoked' WHERE token = ?").bind(token).run();
+		const revoked = await fetchWorker(new IncomingRequest(issuedBody.url, { cf: { country: 'US' } }));
+		expect(revoked.status).toBe(401);
+		await revoked.json();
 
 		const direct = await fetchWorker(new IncomingRequest(`https://downloads.example.com/${FILE_KEY}`));
 		expect(direct.status).toBe(404);

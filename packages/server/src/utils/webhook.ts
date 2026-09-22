@@ -3,6 +3,11 @@ import { MAX_JSON_BODY_BYTES } from './config';
 const SECRET_HEADER = 'X-Webhook-Secret';
 const SECRET_PARAM = 'secret';
 
+export interface MarketoLead {
+	email: string;
+	payload: Record<string, unknown>;
+}
+
 export function verifyWebhookSecret(request: Request, url: URL, configured: string | undefined): boolean {
 	if (!configured) {
 		return false;
@@ -12,7 +17,7 @@ export function verifyWebhookSecret(request: Request, url: URL, configured: stri
 	return provided === configured;
 }
 
-export async function readMarketoLead(request: Request): Promise<Record<string, unknown> | null> {
+export async function readMarketoLead(request: Request): Promise<MarketoLead | null> {
 	const text = await request.text();
 	if (!text || text.length > MAX_JSON_BODY_BYTES) {
 		return null;
@@ -23,12 +28,12 @@ export async function readMarketoLead(request: Request): Promise<Record<string, 
 		return null;
 	}
 
-	const email = typeof record.email === 'string' ? record.email : typeof record.Email === 'string' ? record.Email : '';
+	const email = findEmail(record);
 	if (!email) {
 		return null;
 	}
 
-	return record;
+	return { email, payload: record };
 }
 
 function parseMarketoPayload(text: string, contentType: string): Record<string, unknown> | null {
@@ -45,4 +50,25 @@ function parseMarketoPayload(text: string, contentType: string): Record<string, 
 
 		return Object.fromEntries(new URLSearchParams(text));
 	}
+}
+
+function findEmail(record: Record<string, unknown>): string {
+	for (const [key, value] of Object.entries(record)) {
+		const normalizedKey = key.replace(/[^a-z]/gi, '').toLowerCase();
+		if ((normalizedKey === 'email' || normalizedKey === 'emailaddress') && typeof value === 'string' && value.trim()) {
+			return value;
+		}
+	}
+
+	return '';
+}
+
+export function findMarketoLeadId(record: Record<string, unknown>): string | undefined {
+	for (const [key, value] of Object.entries(record)) {
+		if (key.replace(/[^a-z]/gi, '').toLowerCase() === 'leadid' && typeof value === 'string' && value.trim()) {
+			return value.trim();
+		}
+	}
+
+	return undefined;
 }
