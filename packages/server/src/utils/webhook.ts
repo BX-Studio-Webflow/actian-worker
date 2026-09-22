@@ -18,20 +18,31 @@ export async function readMarketoLead(request: Request): Promise<Record<string, 
 		return null;
 	}
 
+	const record = parseMarketoPayload(text, request.headers.get('content-type') || '');
+	if (!record) {
+		return null;
+	}
+
+	const email = typeof record.email === 'string' ? record.email : typeof record.Email === 'string' ? record.Email : '';
+	if (!email) {
+		return null;
+	}
+
+	return record;
+}
+
+function parseMarketoPayload(text: string, contentType: string): Record<string, unknown> | null {
 	try {
 		const parsed: unknown = JSON.parse(text);
 		if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-			return null;
+			throw new Error('Expected a JSON object');
 		}
-
-		const record = parsed as Record<string, unknown>;
-		const email = typeof record.email === 'string' ? record.email : typeof record.Email === 'string' ? record.Email : '';
-		if (!email) {
-			return null;
-		}
-
-		return record;
+		return parsed as Record<string, unknown>;
 	} catch {
-		return null;
+		if (!contentType.toLowerCase().startsWith('application/x-www-form-urlencoded')) {
+			return null;
+		}
+
+		return Object.fromEntries(new URLSearchParams(text));
 	}
 }

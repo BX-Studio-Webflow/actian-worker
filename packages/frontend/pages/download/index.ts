@@ -2,32 +2,7 @@ import { requestDownloadLink } from '../../shared/api';
 
 const EMAIL_STORAGE_KEY = 'actian-trial-email';
 const DOWNLOAD_LINK_SELECTOR = '.item-trial_download a.cta-main';
-
-function currentScript(): HTMLScriptElement | null {
-	if (document.currentScript instanceof HTMLScriptElement) {
-		return document.currentScript;
-	}
-
-	const scripts = document.querySelectorAll<HTMLScriptElement>('script[src*="download"]');
-	return scripts[scripts.length - 1] ?? null;
-}
-
-function trimSlash(value: string): string {
-	return value.replace(/\/$/, '');
-}
-
-function apiOrigin(script: HTMLScriptElement | null): string {
-	const fromDataset = script?.dataset.api;
-	if (fromDataset) {
-		return trimSlash(fromDataset);
-	}
-
-	if (typeof API_ORIGIN === 'string' && API_ORIGIN) {
-		return trimSlash(API_ORIGIN);
-	}
-
-	return '';
-}
+const API_ORIGIN = 'https://actian-trial-downloads.cf-jaspersoft.workers.dev';
 
 function storeEmail(email: string): void {
 	const trimmed = email.trim();
@@ -67,13 +42,7 @@ function scrollToForm(): void {
 	}
 }
 
-function bindDownloads(script: HTMLScriptElement | null): void {
-	const origin = apiOrigin(script);
-	if (!origin) {
-		console.error('Trial downloads: set data-api on the script tag to the Worker origin.');
-		return;
-	}
-
+function bindDownloads(): void {
 	document.addEventListener('click', (event) => {
 		const target = event.target;
 		if (!(target instanceof Element)) {
@@ -99,7 +68,7 @@ function bindDownloads(script: HTMLScriptElement | null): void {
 			return;
 		}
 
-		void requestDownloadLink(origin, email, file)
+		void requestDownloadLink(API_ORIGIN, email, file)
 			.then((result) => {
 				if (result.url) {
 					window.location.assign(result.url);
@@ -121,12 +90,12 @@ function bindMarketo(): void {
 
 	window.MktoForms2.whenReady((form) => {
 		form.onSuccess((values) => {
+			console.log('Form submitted with values:', values);
 			storeEmail(values.Email || values.email || '');
 			return true;
 		});
 	});
 }
 
-const script = currentScript();
 bindMarketo();
-bindDownloads(script);
+bindDownloads();

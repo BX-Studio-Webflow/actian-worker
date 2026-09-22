@@ -1,11 +1,11 @@
 import { createExecutionContext, env, waitOnExecutionContext } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
 
-import { FILE_CATALOG } from '../src/catalog';
-import { mergedAllowlist, resolveObjectKey } from '../src/files';
-import { isBlockedCountry, isBlockedEmailDomain, isBlockedIp, normalizeEmail } from '../src/gate';
 import worker from '../src/index';
-import { signDownload, toDownloadPath, verifyDownload } from '../src/token';
+import { FILE_CATALOG } from '../src/utils/catalog';
+import { mergedAllowlist, resolveObjectKey } from '../src/utils/files';
+import { isBlockedCountry, isBlockedEmailDomain, isBlockedIp, normalizeEmail } from '../src/utils/gate';
+import { signDownload, toDownloadPath, verifyDownload } from '../src/utils/token';
 
 const IncomingRequest = Request<unknown, IncomingRequestCfProperties>;
 const TEST_SECRET = 'test-secret-do-not-use-in-production';
@@ -126,6 +126,20 @@ describe('download Worker', () => {
 
 		expect(response.status).toBe(403);
 		expect(body.error).toBe('email_blocked');
+	});
+
+	it('accepts Marketo form-encoded attribution callbacks', async () => {
+		const response = await fetchWorker(
+			new IncomingRequest(`https://downloads.example.com/webhook/marketo?secret=${env.MARKETO_WEBHOOK_SECRET}`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+			body: 'email=name%40acme.com&leadId=123',
+			cf: { country: 'US' },
+		}),
+		);
+
+		expect(response.status).toBe(200);
+		expect(await response.json()).toEqual({ ok: true, received: true });
 	});
 
 	it('refuses blocked countries on both link issuance and download', async () => {
