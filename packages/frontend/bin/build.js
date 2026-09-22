@@ -18,16 +18,14 @@ function getPageEntryPoints() {
 			continue;
 		}
 
-		const subdirs = readdirSync(dir, { withFileTypes: true });
-		for (const page of subdirs) {
-			if (!page.isDirectory()) {
+		const files = readdirSync(dir, { withFileTypes: true });
+		for (const file of files) {
+			if (!file.isFile() || !file.name.endsWith('.ts')) {
 				continue;
 			}
 
-			const indexPath = join(dir, page.name, 'index.ts');
-			if (existsSync(indexPath)) {
-				entryPoints[`${keyPrefix}/${page.name}/index`] = indexPath;
-			}
+			const name = file.name.slice(0, -'.ts'.length);
+			entryPoints[`${keyPrefix}/${name}`] = join(dir, file.name);
 		}
 	}
 

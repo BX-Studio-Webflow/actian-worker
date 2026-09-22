@@ -19,8 +19,8 @@ app.post('/webhook/marketo', receiveMarketoWebhook);
 
 app.notFound(() => jsonError(404, 'not_found', 'Not found.'));
 app.onError((error) => {
-    console.error('Worker error:', error.message);
-    return jsonError(500, 'internal_error', 'Request failed.');
+	console.error('Worker error:', error.message);
+	return jsonError(500, 'internal_error', 'Request failed.');
 });
 
 export default app;

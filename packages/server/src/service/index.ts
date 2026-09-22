@@ -9,15 +9,15 @@ import { DownloadService } from './download';
 import { MarketoService } from './marketo';
 
 export function createServices(env: AppEnv['Bindings']): { download: DownloadService; marketo: MarketoService } {
-    if (!env.LEAD_HASH_SECRET) {
-        throw new Error('LEAD_HASH_SECRET is not configured');
-    }
+	if (!env.LEAD_HASH_SECRET) {
+		throw new Error('LEAD_HASH_SECRET is not configured');
+	}
 
-    const db = drizzle(env.DB, { schema });
-    const trialLeads = new TrialLeadRepository(db);
+	const db = drizzle(env.DB, { schema });
+	const trialLeads = new TrialLeadRepository(db);
 
-    return {
-        download: new DownloadService(trialLeads, new DownloadGrantRepository(db), env.LEAD_HASH_SECRET),
-        marketo: new MarketoService(trialLeads, new MarketoWebhookRepository(db), env.LEAD_HASH_SECRET),
-    };
+	return {
+		download: new DownloadService(trialLeads, new DownloadGrantRepository(db), env.LEAD_HASH_SECRET),
+		marketo: new MarketoService(trialLeads, new MarketoWebhookRepository(db), env.LEAD_HASH_SECRET),
+	};
 }

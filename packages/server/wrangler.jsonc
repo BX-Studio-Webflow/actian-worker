@@ -38,7 +38,8 @@
 		{
 			"binding": "DB",
 			"database_name": "actian-trial-downloads",
-			"database_id": "f288d15c-51df-4dde-b613-f4a6d1ed877c"
+			"database_id": "f288d15c-51df-4dde-b613-f4a6d1ed877c",
+			"migrations_dir": "src/schema/migrations"
 		}
 	],
 	"env": {
@@ -64,7 +65,8 @@
 				{
 					"binding": "DB",
 					"database_name": "actian-trial-downloads",
-					"database_id": "f288d15c-51df-4dde-b613-f4a6d1ed877c"
+					"database_id": "f288d15c-51df-4dde-b613-f4a6d1ed877c",
+					"migrations_dir": "src/schema/migrations"
 				}
 			]
 		},
@@ -90,7 +92,8 @@
 				{
 					"binding": "DB",
 					"database_name": "actian-trial-downloads-dev",
-					"database_id": "460c682c-7f9f-48a2-b5b4-b31fcff96a5d"
+					"database_id": "460c682c-7f9f-48a2-b5b4-b31fcff96a5d",
+					"migrations_dir": "src/schema/migrations"
 				}
 			]
 		}

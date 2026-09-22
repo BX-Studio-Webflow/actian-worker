@@ -1,15 +1,8 @@
-import { requestDownloadLink } from '../../shared/api';
+import { requestDownloadLink } from '../shared/api';
 
 const EMAIL_STORAGE_KEY = 'actian-trial-email';
 const DOWNLOAD_LINK_SELECTOR = '.item-trial_download a.cta-main';
 const API_ORIGIN = 'https://actian-trial-downloads.cf-jaspersoft.workers.dev';
-
-function storeEmail(email: string): void {
-	const trimmed = email.trim();
-	if (trimmed) {
-		sessionStorage.setItem(EMAIL_STORAGE_KEY, trimmed);
-	}
-}
 
 function readEmail(): string {
 	const stored = sessionStorage.getItem(EMAIL_STORAGE_KEY);
@@ -44,7 +37,7 @@ function scrollToForm(): void {
 
 function bindDownloads(): void {
 	document.addEventListener('click', (event) => {
-		const target = event.target;
+		const { target } = event;
 		if (!(target instanceof Element)) {
 			return;
 		}
@@ -83,19 +76,4 @@ function bindDownloads(): void {
 	});
 }
 
-function bindMarketo(): void {
-	if (!window.MktoForms2) {
-		return;
-	}
-
-	window.MktoForms2.whenReady((form) => {
-		form.onSuccess((values) => {
-			console.log('Form submitted with values:', values);
-			storeEmail(values.Email || values.email || '');
-			return true;
-		});
-	});
-}
-
-bindMarketo();
 bindDownloads();
