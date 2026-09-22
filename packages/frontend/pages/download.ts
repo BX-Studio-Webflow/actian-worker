@@ -1,79 +1,84 @@
 import { requestDownloadLink } from '../shared/api';
 
 const EMAIL_STORAGE_KEY = 'actian-trial-email';
-const DOWNLOAD_LINK_SELECTOR = '.item-trial_download a.cta-main';
+const DOWNLOAD_LINK_SELECTOR = '[dev-target="download-link"]';
+const ERROR_WRAPPER_SELECTOR = '[dev-target="error-wrapper"]';
+const ERROR_TEXT_SELECTOR = '[dev-target="error-text"]';
+const ERROR_CANCEL_SELECTOR = '[dev-target="cancel"]';
 const API_ORIGIN = 'https://actian-trial-downloads.cf-jaspersoft.workers.dev';
 
 function readEmail(): string {
-    const stored = sessionStorage.getItem(EMAIL_STORAGE_KEY);
-    if (stored) {
-        return stored;
-    }
+	const stored = sessionStorage.getItem(EMAIL_STORAGE_KEY);
+	if (stored) {
+		return stored;
+	}
 
-    const input = document.querySelector<HTMLInputElement>('input[name="Email"], input#Email, input[type="email"]');
-    return input?.value.trim() || '';
+	const input = document.querySelector<HTMLInputElement>('input[name="Email"], input#Email, input[type="email"]');
+	return input?.value.trim() || '';
 }
 
 function fileFromLink(link: HTMLAnchorElement): string {
-    const attributed = link.getAttribute('data-download-file');
-    if (attributed) {
-        return attributed.trim();
-    }
-
-    try {
-        const url = new URL(link.href, window.location.href);
-        return decodeURIComponent(url.pathname.split('/').pop() || '');
-    } catch {
-        return '';
-    }
+	return link.getAttribute('metadata')?.trim() || '';
 }
 
-function scrollToForm(): void {
-    const form = document.querySelector('.mktoForm, form');
-    if (form) {
-        form.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }
+function showError(message: string): void {
+	const wrapper = document.querySelector<HTMLElement>(ERROR_WRAPPER_SELECTOR);
+	const text = wrapper?.querySelector<HTMLElement>(ERROR_TEXT_SELECTOR);
+	if (!wrapper || !text) {
+		return;
+	}
+
+	text.textContent = message;
+	wrapper.classList.remove('hide');
+}
+
+function hideError(): void {
+	document.querySelector<HTMLElement>(ERROR_WRAPPER_SELECTOR)?.classList.add('hide');
 }
 
 function bindDownloads(): void {
-    document.addEventListener('click', (event) => {
-        const { target } = event;
-        if (!(target instanceof Element)) {
-            return;
-        }
+	document.querySelectorAll<HTMLAnchorElement>(DOWNLOAD_LINK_SELECTOR).forEach((link) => {
+		link.addEventListener('click', (event) => {
+			const file = fileFromLink(link);
+			const email = readEmail();
+			if (!file) {
+				console.error('[Download process] No file specified for download');
+				showError('The selected download is unavailable.');
+				return;
+			}
 
-        const link = target.closest<HTMLAnchorElement>(DOWNLOAD_LINK_SELECTOR);
-        if (!link) {
-            return;
-        }
+			event.preventDefault();
+			event.stopPropagation();
 
-        const file = fileFromLink(link);
-        const email = readEmail();
-        if (!file) {
-            return;
-        }
+			if (!email) {
+				console.error('[Download process] No email provided for download');
+				showError('Please submit the trial form before downloading.');
+				return;
+			}
 
-        event.preventDefault();
-        event.stopPropagation();
+			void requestDownloadLink(API_ORIGIN, email, file)
+				.then((result) => {
+					if (result.url) {
+						window.location.assign(result.url);
+						return;
+					}
 
-        if (!email) {
-            scrollToForm();
-            return;
-        }
+					console.error('[Download process] Download was not issued', result);
+					showError(result.message || 'The download could not be issued.');
+				})
+				.catch((error: unknown) => {
+					console.error('[Download process] Download request failed', error);
+					showError('The download request failed. Please try again.');
+				});
+		});
+	});
+}
 
-        void requestDownloadLink(API_ORIGIN, email, file)
-            .then((result) => {
-                if (result.url) {
-                    window.location.assign(result.url);
-                    return;
-                }
-
-                console.error('Download was not issued', result);
-            })
-            .catch((error: unknown) => {
-                console.error('Download request failed', error);
-            });
-    });
+function bindErrorCancel(): void {
+	document.querySelectorAll<HTMLElement>(ERROR_CANCEL_SELECTOR).forEach((cancel) => {
+		cancel.addEventListener('click', hideError);
+	});
 }
 
 bindDownloads();
+bindErrorCancel();

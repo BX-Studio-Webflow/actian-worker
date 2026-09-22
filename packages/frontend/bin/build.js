@@ -7,6 +7,7 @@ const PRODUCTION = process.env.NODE_ENV === 'production';
 const LIVE_RELOAD = !PRODUCTION;
 const SERVE_PORT = 3000;
 const SERVE_ORIGIN = `http://localhost:${SERVE_PORT}`;
+const DEV_CORS_ORIGIN = 'https://jaspersoft.webflow.io';
 const API_ORIGIN = process.env.ACTIAN_API_ORIGIN || '';
 
 function getPageEntryPoints() {
@@ -59,6 +60,7 @@ if (PRODUCTION) {
 		.serve({
 			servedir: BUILD_DIRECTORY,
 			port: SERVE_PORT,
+			cors: { origin: DEV_CORS_ORIGIN },
 		})
 		.then(logServedFiles);
 }

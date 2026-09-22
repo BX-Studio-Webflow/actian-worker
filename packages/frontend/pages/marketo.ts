@@ -14,6 +14,7 @@ function bindMarketo(): void {
 
 	window.MktoForms2.whenReady((form) => {
 		form.onSuccess((values) => {
+			console.log('[Marketo] Form submitted with email values:', values.Email || values.email);
 			storeEmail(values.Email || values.email || '');
 			return true;
 		});

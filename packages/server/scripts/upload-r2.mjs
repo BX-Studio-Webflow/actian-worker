@@ -1,4 +1,4 @@
-import { HeadObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { HeadObjectCommand, ListObjectsV2Command, S3Client } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
 import { createReadStream, existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
@@ -85,6 +85,7 @@ function requiredEnv(name) {
 function parseArgs(argv) {
 	return {
 		dryRun: argv.includes('--dry-run'),
+		list: argv.includes('--list'),
 		skipExisting: argv.includes('--skip-existing'),
 	};
 }
@@ -102,7 +103,7 @@ async function objectExists(client, bucket, key) {
 }
 
 async function main() {
-	const { dryRun, skipExisting } = parseArgs(process.argv.slice(2));
+	const { dryRun, list, skipExisting } = parseArgs(process.argv.slice(2));
 
 	const jobs = walkFiles(DOWNLOADS_DIR)
 		.map((path) => ({ path, key: r2KeyFor(path) }))
@@ -134,6 +135,29 @@ async function main() {
 			secretAccessKey: requiredEnv('R2_SECRET_ACCESS_KEY'),
 		},
 	});
+
+	if (list) {
+		let continuationToken;
+		let count = 0;
+		do {
+			const response = await client.send(
+				new ListObjectsV2Command({
+					Bucket: bucket,
+					ContinuationToken: continuationToken,
+				}),
+			);
+
+			for (const object of response.Contents ?? []) {
+				console.log(`${object.Key}\t${object.Size ?? 0}`);
+				count += 1;
+			}
+
+			continuationToken = response.IsTruncated ? response.NextContinuationToken : undefined;
+		} while (continuationToken);
+
+		console.log(`Listed ${count} object(s) in ${bucket}.`);
+		return;
+	}
 
 	for (const job of jobs) {
 		const sizeMb = (statSync(job.path).size / (1024 * 1024)).toFixed(1);
