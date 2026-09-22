@@ -131,11 +131,11 @@ describe('download Worker', () => {
 	it('accepts Marketo form-encoded attribution callbacks', async () => {
 		const response = await fetchWorker(
 			new IncomingRequest(`https://downloads.example.com/webhook/marketo?secret=${env.MARKETO_WEBHOOK_SECRET}`, {
-			method: 'POST',
-			headers: { 'content-type': 'application/x-www-form-urlencoded; charset=UTF-8' },
-			body: 'email=name%40acme.com&leadId=123',
-			cf: { country: 'US' },
-		}),
+				method: 'POST',
+				headers: { 'content-type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+				body: 'email=name%40acme.com&leadId=123',
+				cf: { country: 'US' },
+			}),
 		);
 
 		expect(response.status).toBe(200);
