@@ -21,10 +21,11 @@ export const FILE_CATALOG: Record<string, string> = {
 
 	// 10.0.0 — Mac
 	'jrs-macos': '10.0.0/js-jrs_10.0.0_macosx_x86_64.zip',
-	'jss-macos': '10.0.0/js-jss_10.0.0_macosx_x86_64.zip',
+	'jss-macos': '10.0.0/js-jss_10.0.0_macosx_x86_64.dmg',
 	'jrws-macos': '10.0.0/js-jrws-pro_10.0.0_mac_x86_64.zip',
 	'jrio-macos': '10.0.0/js-jrio-pro_10.0.0_macos_x86_64.zip',
 	'js-jrs-dev_10.0.0_macosx_x86_64.zip': '10.0.0/js-jrs_10.0.0_macosx_x86_64.zip',
+	'js-jss-dev_10.0.0_macosx_x86_64.dmg': '10.0.0/js-jss_10.0.0_macosx_x86_64.dmg',
 	'js-jrws-pro-dev_10.0.0_mac_x86_64.zip': '10.0.0/js-jrws-pro_10.0.0_mac_x86_64.zip',
 	'js-jrio-pro-dev_10.0.0_macos_x86_64.zip': '10.0.0/js-jrio-pro_10.0.0_macos_x86_64.zip',
 
@@ -53,6 +54,18 @@ export const FILE_CATALOG: Record<string, string> = {
 
 /** Basename of a local installer → R2 key. Wrapper zip archives are omitted. */
 export const LOCAL_UPLOAD_MAP: Record<string, string> = {
+	'js-jrs-dev_10.0.0_win_x86_64.exe': '10.0.0/js-jrs_10.0.0_win_x86_64.exe',
+	'js-jss-dev_10.0.0_windows_x86_64.exe': '10.0.0/js-jss_10.0.0_windows_x86_64.exe',
+	'js-jrws-pro-dev_10.0.0_windows_x86_64.zip': '10.0.0/js-jrws-pro_10.0.0_windows_x86_64.zip',
+	'js-jrio-pro-dev_10.0.0_windows_x86_64.zip': '10.0.0/js-jrio-pro_10.0.0_windows_x86_64.zip',
+	'js-jrs-dev_10.0.0_macosx_x86_64.zip': '10.0.0/js-jrs_10.0.0_macosx_x86_64.zip',
+	'js-jss-dev_10.0.0_macosx_x86_64.dmg': '10.0.0/js-jss_10.0.0_macosx_x86_64.dmg',
+	'js-jrws-pro-dev_10.0.0_mac_x86_64.zip': '10.0.0/js-jrws-pro_10.0.0_mac_x86_64.zip',
+	'js-jrio-pro-dev_10.0.0_macos_x86_64.zip': '10.0.0/js-jrio-pro_10.0.0_macos_x86_64.zip',
+	'js-jrs-dev_10.0.0_linux_x86_64.run': '10.0.0/js-jrs_10.0.0_linux_x86_64.run',
+	'js-jss-dev_10.0.0_linux_x86_64.tgz': '10.0.0/js-jss_10.0.0_linux_x86_64.tgz',
+	'js-jrws-pro-dev_10.0.0_linux_x86_64.zip': '10.0.0/js-jrws-pro_10.0.0_linux_x86_64.zip',
+	'js-jrio-pro-dev_10.0.0_linux_x86_64.zip': '10.0.0/js-jrio-pro_10.0.0_linux_x86_64.zip',
 	'js-jrs_10.0.0_linux_x86_64.run': '10.0.0/js-jrs_10.0.0_linux_x86_64.run',
 	'js-jrio-pro_10.0.0_macos_x86_64.zip': '10.0.0/js-jrio-pro_10.0.0_macos_x86_64.zip',
 	'JasperReports-Server_9.0.0_win_x86_64.exe': '9.0.0/JasperReports-Server_9.0.0_win_x86_64.exe',

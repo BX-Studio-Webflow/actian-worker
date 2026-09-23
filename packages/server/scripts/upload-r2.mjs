@@ -1,5 +1,4 @@
-import { HeadObjectCommand, ListObjectsV2Command, S3Client } from '@aws-sdk/client-s3';
-import { Upload } from '@aws-sdk/lib-storage';
+import { HeadObjectCommand, ListObjectsV2Command, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { createReadStream, existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -37,6 +36,18 @@ loadDevVars(DEV_VARS);
 const WRAPPER_ZIP = /^\d+\.\d+\.x trials-.*\.zip$/i;
 
 const LOCAL_UPLOAD_MAP = {
+	'js-jrs-dev_10.0.0_win_x86_64.exe': '10.0.0/js-jrs_10.0.0_win_x86_64.exe',
+	'js-jss-dev_10.0.0_windows_x86_64.exe': '10.0.0/js-jss_10.0.0_windows_x86_64.exe',
+	'js-jrws-pro-dev_10.0.0_windows_x86_64.zip': '10.0.0/js-jrws-pro_10.0.0_windows_x86_64.zip',
+	'js-jrio-pro-dev_10.0.0_windows_x86_64.zip': '10.0.0/js-jrio-pro_10.0.0_windows_x86_64.zip',
+	'js-jrs-dev_10.0.0_macosx_x86_64.zip': '10.0.0/js-jrs_10.0.0_macosx_x86_64.zip',
+	'js-jss-dev_10.0.0_macosx_x86_64.dmg': '10.0.0/js-jss_10.0.0_macosx_x86_64.dmg',
+	'js-jrws-pro-dev_10.0.0_mac_x86_64.zip': '10.0.0/js-jrws-pro_10.0.0_mac_x86_64.zip',
+	'js-jrio-pro-dev_10.0.0_macos_x86_64.zip': '10.0.0/js-jrio-pro_10.0.0_macos_x86_64.zip',
+	'js-jrs-dev_10.0.0_linux_x86_64.run': '10.0.0/js-jrs_10.0.0_linux_x86_64.run',
+	'js-jss-dev_10.0.0_linux_x86_64.tgz': '10.0.0/js-jss_10.0.0_linux_x86_64.tgz',
+	'js-jrws-pro-dev_10.0.0_linux_x86_64.zip': '10.0.0/js-jrws-pro_10.0.0_linux_x86_64.zip',
+	'js-jrio-pro-dev_10.0.0_linux_x86_64.zip': '10.0.0/js-jrio-pro_10.0.0_linux_x86_64.zip',
 	'js-jrs_10.0.0_linux_x86_64.run': '10.0.0/js-jrs_10.0.0_linux_x86_64.run',
 	'js-jrio-pro_10.0.0_macos_x86_64.zip': '10.0.0/js-jrio-pro_10.0.0_macos_x86_64.zip',
 	'JasperReports-Server_9.0.0_win_x86_64.exe': '9.0.0/JasperReports-Server_9.0.0_win_x86_64.exe',
@@ -83,9 +94,11 @@ function requiredEnv(name) {
 }
 
 function parseArgs(argv) {
+	const prefixIndex = argv.indexOf('--prefix');
 	return {
 		dryRun: argv.includes('--dry-run'),
 		list: argv.includes('--list'),
+		prefix: prefixIndex >= 0 ? argv[prefixIndex + 1] : undefined,
 		skipExisting: argv.includes('--skip-existing'),
 	};
 }
@@ -103,11 +116,17 @@ async function objectExists(client, bucket, key) {
 }
 
 async function main() {
-	const { dryRun, list, skipExisting } = parseArgs(process.argv.slice(2));
+	const { dryRun, list, prefix, skipExisting } = parseArgs(process.argv.slice(2));
 
-	const jobs = walkFiles(DOWNLOADS_DIR)
-		.map((path) => ({ path, key: r2KeyFor(path) }))
-		.filter((job) => job.key);
+	const jobsByKey = new Map();
+	for (const path of walkFiles(DOWNLOADS_DIR)) {
+		const key = r2KeyFor(path);
+		if (key) {
+			jobsByKey.set(key, { path, key });
+		}
+	}
+
+	const jobs = [...jobsByKey.values()].filter((job) => !prefix || job.key.startsWith(prefix));
 
 	if (jobs.length === 0) {
 		console.error(`No mapped installers found under ${DOWNLOADS_DIR}`);
@@ -167,25 +186,14 @@ async function main() {
 		}
 
 		console.log(`put   ${sizeMb} MB  ${basename(job.path)} -> ${bucket}/${job.key}`);
-		const upload = new Upload({
-			client,
-			params: {
+		await client.send(
+			new PutObjectCommand({
 				Bucket: bucket,
 				Key: job.key,
 				Body: createReadStream(job.path),
-			},
-			leavePartsOnError: false,
-		});
-
-		upload.on('httpUploadProgress', (progress) => {
-			if (progress.total) {
-				const pct = Math.round(((progress.loaded ?? 0) / progress.total) * 100);
-				process.stdout.write(`\r      ${pct}%`);
-			}
-		});
-
-		await upload.done();
-		process.stdout.write('\n');
+				ContentLength: statSync(job.path).size,
+			}),
+		);
 	}
 }
 
