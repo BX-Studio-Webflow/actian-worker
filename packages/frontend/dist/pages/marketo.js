@@ -1,0 +1,1 @@
+var o="actian-trial-email";function e(t){let i=t.trim();i&&sessionStorage.setItem(o,i)}function n(){window.MktoForms2&&window.MktoForms2.whenReady(t=>{t.onSuccess(i=>(console.log("[Marketo] Form submitted with email values:",i.Email||i.email),e(i.Email||i.email||""),!0))})}n();
