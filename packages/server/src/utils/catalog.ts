@@ -1,12 +1,10 @@
 /**
  * Trial file catalog.
  *
- * Aliases are what the Webflow page / frontend send. Values are R2 object keys.
- * TIBCO edownload filenames are included so we can intercept existing CTAs
- * without rewriting every href.
- *
- * Local copies currently on disk (Chris extract) are only a subset of 10.0/9.0.
- * Missing objects 404 until they are uploaded.
+ * Download CTAs send one of these strings in the `metadata` attribute.
+ * Short aliases and the R2 object keys below are both accepted.
+ * An unknown string returns 400 invalid_file. A known key missing from R2 returns 404.
+ * Mac Jaspersoft Studio is `10.0.0/js-jss_10.0.0_macosx_x86_64.dmg` (`jss-macos`), not a `.zip`.
  */
 export const FILE_CATALOG: Record<string, string> = {
 	// 10.0.0 — Windows

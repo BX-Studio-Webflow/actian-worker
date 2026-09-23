@@ -52,7 +52,7 @@ beforeEach(async () => {
 });
 
 describe('file catalog', () => {
-	it('maps Webflow TIBCO filenames and short aliases to R2 keys', () => {
+	it('maps short aliases, installer filenames, and catalog keys to R2 keys', () => {
 		const allowlist = mergedAllowlist();
 		expect(resolveObjectKey('jrs-linux', allowlist)).toBe('10.0.0/js-jrs_10.0.0_linux_x86_64.run');
 		expect(resolveObjectKey('js-jrs-dev_10.0.0_win_x86_64.exe', allowlist)).toBe('10.0.0/js-jrs_10.0.0_win_x86_64.exe');

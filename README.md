@@ -10,31 +10,51 @@ packages/
 
 ## How this wires to the Webflow page
 
-The page is OS tabs (Windows / Mac / Linux) with four CTAs each. Those CTAs currently point at `edownloads.tibco.com`. Do **not** restyle the page. Add one script tag in page custom code:
+The thank-you page is OS tabs (Windows / Mac / Linux) with four download CTAs each. Two page scripts handle the flow. Local dev serves them from esbuild:
+
+```html
+<script type="module" src="http://localhost:3000/pages/marketo.js"></script>
+<script type="module" src="http://localhost:3000/pages/download.js"></script>
+```
+
+Production loads the built files from jsDelivr, pinned to a git commit. After changing either script, commit the rebuilt `packages/frontend/dist` output and point Webflow at that commit. OneTrust must not auto-block jsDelivr or the Worker origin.
 
 ```html
 <script
-	type="module"
-	src="http://localhost:3000/pages/download/index.js"
+	defer
+	src="https://cdn.jsdelivr.net/gh/BX-Studio-Webflow/actian-worker@<commit>/packages/frontend/dist/pages/marketo.js"
+></script>
+<script
+	defer
+	src="https://cdn.jsdelivr.net/gh/BX-Studio-Webflow/actian-worker@<commit>/packages/frontend/dist/pages/download.js"
 ></script>
 ```
 
-In production, point `src` at the deployed frontend asset.
+`download.js` posts to `https://actian-trial-downloads.cf-jaspersoft.workers.dev`.
 
-The production frontend asset is delivered via jsDelivr and uses the Worker origin compiled into the script. OneTrust must not auto-block jsDelivr or that Worker origin.
+What the scripts do:
 
-What the script does:
+1. `marketo.js` waits up to 15 seconds for `MktoForms2`. The Webflow Marketo app loads `forms2.min.js` asynchronously, so a single check at startup usually runs before Forms 2 exists and never registers a handler.
+2. On form success it stores `Email` (or `email`) in `sessionStorage` under `actian-trial-email`, then returns `true` so Marketo follows its thank-you URL.
+3. That thank-you URL must be the same origin as the form page. `sessionStorage` does not carry the email onto another host.
+4. `download.js` handles clicks on `[dev-target="download-link"]`. The installer id is the anchor's `metadata` attribute: a catalog alias or a catalog R2 key. The original `href` is left in place and is only followed when `metadata` is empty or the script did not load.
+5. The email is read from `sessionStorage`, then from an `Email` / `#Email` / `input[type="email"]` field in the parent document. The thank-you page has no form, so the stored key is required.
+6. `POST /api/link` runs country / IP / email gating and returns a 10-minute opaque Worker URL.
+7. The browser navigates to that URL; the Worker streams the private R2 object.
 
-1. Marketo `onSuccess` stores the business email (lead is already in Marketo).
-2. Clicks on `.item-trial_download a.cta-main` are intercepted (`preventDefault` so TIBCO is never hit).
-3. The installer is identified from `data-download-file` if present, otherwise from the TIBCO filename in the existing `href`.
-4. `POST /api/link` runs country / IP / email gating and returns a 10-minute opaque Worker URL.
-5. The browser navigates to that URL; the Worker streams the private R2 object.
-
-Optional per-button override (only if an href filename is wrong — Mac Studio/Web Studio currently share bad TIBCO URLs):
+Download CTA:
 
 ```html
-<a class="cta-main w-inline-block" data-download-file="jss-macos" href="#">
+<a dev-target="download-link" metadata="jss-macos" href="#">Download</a>
+```
+
+Error surface. `download.js` removes `hide` from the wrapper and sets the text. `[dev-target="cancel"]` adds `hide` again.
+
+```html
+<div dev-target="error-wrapper" class="hide">
+	<p dev-target="error-text"></p>
+	<button type="button" dev-target="cancel">Close</button>
+</div>
 ```
 
 ### File aliases (10.0.0)
@@ -46,7 +66,7 @@ Optional per-button override (only if an href filename is wrong — Mac Studio/W
 | Windows | Web Studio | `jrws-windows` | `10.0.0/js-jrws-pro_10.0.0_windows_x86_64.zip` |
 | Windows | IO Professional | `jrio-windows` | `10.0.0/js-jrio-pro_10.0.0_windows_x86_64.zip` |
 | Mac | Server | `jrs-macos` | `10.0.0/js-jrs_10.0.0_macosx_x86_64.zip` |
-| Mac | Studio | `jss-macos` | `10.0.0/js-jss_10.0.0_macosx_x86_64.zip` |
+| Mac | Studio | `jss-macos` | `10.0.0/js-jss_10.0.0_macosx_x86_64.dmg` |
 | Mac | Web Studio | `jrws-macos` | `10.0.0/js-jrws-pro_10.0.0_mac_x86_64.zip` |
 | Mac | IO Professional | `jrio-macos` | `10.0.0/js-jrio-pro_10.0.0_macos_x86_64.zip` |
 | Linux | Server | `jrs-linux` | `10.0.0/js-jrs_10.0.0_linux_x86_64.run` |
@@ -54,15 +74,7 @@ Optional per-button override (only if an href filename is wrong — Mac Studio/W
 | Linux | Web Studio | `jrws-linux` | `10.0.0/js-jrws-pro_10.0.0_linux_x86_64.zip` |
 | Linux | IO Professional | `jrio-linux` | `10.0.0/js-jrio-pro_10.0.0_linux_x86_64.zip` |
 
-Catalog lives in `packages/server/src/utils/catalog.ts`. TIBCO filenames from the current hrefs are also registered so the existing markup works.
-
-**On disk today** (Chris extract) only these installers exist. The rest 404 until uploaded:
-
-- `10.0.0/js-jrs_10.0.0_linux_x86_64.run`
-- `10.0.0/js-jrio-pro_10.0.0_macos_x86_64.zip`
-- `9.0.0/JasperReports-Server_9.0.0_win_x86_64.exe`
-- `9.0.0/JasperReports-Server_9.0.0_linux_x86_64.run`
-- `9.0.0/JasperReports-IO_4.0.0_macosx_x86_64.zip`
+Catalog lives in `packages/server/src/utils/catalog.ts`. `/api/link` accepts either the alias or the R2 key from that table. Any other string, including the old Mac Studio path `10.0.0/js-jss_10.0.0_macosx_x86_64.zip`, returns `400` `invalid_file`. A catalog key that is not in the bucket returns `404` `not_found`. Redeploy the Worker after catalog changes; the running Worker keeps the catalog it was deployed with. Upload mapped installers with `pnpm upload` before expecting `200`.
 
 ## Upload to R2 (S3-compatible API)
 
@@ -115,32 +127,37 @@ Marketo still captures the lead before the download is allowed or refused.
 
 The solution replaces direct trial-download links with a gated, short-lived download flow. Installers live in a private Cloudflare R2 bucket and can only be downloaded through a Cloudflare Worker.
 
-The frontend module is TypeScript compiled with esbuild and deployed as a static JavaScript asset. The production asset is delivered through jsDelivr and loaded by the Webflow trial page. The Cloudflare Worker applies access gates, writes short-lived opaque download grants to D1, and streams installer files from its private R2 binding. Marketo remains the form and lead-capture system; authenticated callbacks are correlated through a keyed email hash.
+The frontend scripts are TypeScript compiled with esbuild. Webflow loads the committed `packages/frontend/dist` files through jsDelivr's GitHub CDN. The Cloudflare Worker applies access gates, writes short-lived opaque download grants to D1, and streams installer files from its private R2 binding. Marketo remains the form and lead-capture system; authenticated callbacks are correlated through a keyed email hash.
 
 ### Browser request flow
 
-1. Webflow loads the production module from jsDelivr. The Worker origin is configured in the deployed module.
-2. When Marketo's `MktoForms2` API signals a successful form submission, the module stores the submitted email in `sessionStorage` under `actian-trial-email`.
-3. A visitor clicks a CTA matching `.item-trial_download a.cta-main`.
-4. The module prevents the CTA's default navigation. It obtains the installer from `data-download-file`, or derives the filename from the existing CTA URL. Existing TIBCO URLs can remain in Webflow markup without being visited.
-5. The module reads the email from session storage, falling back to the page's email input. If no email is available, it scrolls to the form instead of requesting a download.
-6. The module sends `POST <Worker origin>/api/link` with `{ "email": "...", "file": "..." }`.
-7. If successful, it navigates to the returned opaque URL. The Worker resolves the active D1 grant and streams the R2 object as an attachment.
+1. Webflow loads `marketo.js` and `download.js` from jsDelivr at a pinned commit. `download.js` calls `https://actian-trial-downloads.cf-jaspersoft.workers.dev`.
+2. `marketo.js` polls until `MktoForms2` exists (15 seconds, every 100ms), then registers `whenReady` / `onSuccess`. Forms 2 still invokes `whenReady` for a form that is already on the page.
+3. On success the module stores the submitted email in `sessionStorage` under `actian-trial-email` and lets Marketo redirect. The thank-you page must be the same origin.
+4. A visitor clicks an anchor matching `[dev-target="download-link"]`.
+5. The module reads `metadata` for the file id. If `metadata` is present it cancels the click. If it is missing, the original `href` is left alone and an error is shown.
+6. The module reads the email from session storage, then from a parent-document email field. If no email is available, it shows "Please submit the trial form before downloading." and does not call the Worker.
+7. The module sends `POST /api/link` with `{ "email": "...", "file": "..." }`.
+8. On success it navigates to the returned opaque URL. The Worker resolves the active D1 grant and streams the R2 object as an attachment. Other failures are written into `[dev-target="error-text"]`.
 
 The browser never calls R2 directly. It makes the API request and then navigates to the Worker download endpoint.
 
 ### Webflow requirements
 
-Use a module script tag equivalent to the following. In production, `src` is the built jsDelivr asset.
+Load both built scripts. In production, `src` is the jsDelivr URL pinned to the commit that contains `packages/frontend/dist/pages/marketo.js` and `pages/download.js`.
 
 ```html
 <script
-	type="module"
-	src="https://cdn.jsdelivr.net/.../pages/download/index.js"
+	defer
+	src="https://cdn.jsdelivr.net/gh/BX-Studio-Webflow/actian-worker@<commit>/packages/frontend/dist/pages/marketo.js"
+></script>
+<script
+	defer
+	src="https://cdn.jsdelivr.net/gh/BX-Studio-Webflow/actian-worker@<commit>/packages/frontend/dist/pages/download.js"
 ></script>
 ```
 
-Each download CTA must have `cta-main` inside an `.item-trial_download` element. Existing TIBCO `href` values work because their basenames are registered in the file catalog. Add `data-download-file="<alias>"` only when the existing URL identifies an incorrect installer.
+Each download CTA needs `dev-target="download-link"` and a `metadata` value that is a current catalog alias or R2 key, for example `metadata="jss-macos"` or `metadata="10.0.0/js-jss_10.0.0_macosx_x86_64.dmg"`. The Marketo form follow-up URL must stay on the same origin as the page that loaded `marketo.js`. Provide `[dev-target="error-wrapper"]`, `[dev-target="error-text"]`, and `[dev-target="cancel"]` for link errors.
 
 ### Worker API
 
@@ -173,14 +190,14 @@ The Worker handles `OPTIONS` and permits `GET`, `HEAD`, `POST`, and `OPTIONS` wi
 
 For OneTrust, exempt from automatic blocking or categorize as Strictly Necessary, subject to legal review:
 
-- `cdn.jsdelivr.net`, which delivers the download-interceptor module.
-- The configured Cloudflare Worker hostname or custom domain, which receives `POST /api/link` and serves signed `/download` URLs.
+- `cdn.jsdelivr.net`, which delivers `marketo.js` and `download.js`.
+- The configured Cloudflare Worker hostname or custom domain, which receives `POST /api/link` and serves opaque `/download` URLs.
 
 Cloudflare R2 is server-side only, so it does not need a browser-side OneTrust exception. The R2 upload script and AWS SDK are operator tooling, not visitor-side dependencies.
 
-Marketo is the form/lead-capture provider. The module uses it to retain the email after form success, but its OneTrust category must follow the applicable privacy policy; this code does not establish it as Strictly Necessary. The module can fall back to the visible email field when Marketo's JavaScript API is unavailable.
+Marketo is the form/lead-capture provider. `marketo.js` uses it to retain the email after form success, but its OneTrust category must follow the applicable privacy policy; this code does not establish it as Strictly Necessary. `download.js` can read a visible parent-document email field only when that field is still on the page. The thank-you page depends on `sessionStorage`.
 
-If jsDelivr is blocked, the click interceptor does not load and CTAs navigate to their original TIBCO `href` values. If the Worker domain is blocked, the interceptor loads but cannot issue a signed link. Test both rejected-consent and accepted-consent states in an incognito browser.
+If jsDelivr is blocked, neither script loads and CTAs navigate to their original `href` values. If the Worker domain is blocked, the click handler loads but cannot issue a link. Test both rejected-consent and accepted-consent states in an incognito browser.
 
 ### Configuration, deployment, and release validation
 
@@ -188,6 +205,6 @@ Worker bindings and non-secret configuration live in `packages/server/wrangler.j
 
 Generate migrations with `pnpm --filter @actian/server db:generate`. Apply the checked-in migration before deploying the Worker: `pnpm --filter @actian/server db:migrate:development` or `pnpm --filter @actian/server db:migrate:production`.
 
-`pnpm deploy:frontend` publishes the compiled static asset to Cloudflare Pages; jsDelivr can then deliver that production asset. `pnpm deploy:server` deploys the production Worker. `pnpm upload` transfers mapped installers to the private bucket through R2's S3-compatible endpoint and is not part of the visitor request flow.
+`pnpm deploy:frontend` publishes the compiled assets to Cloudflare Pages (`actian-frontend-assets`). The Webflow page does not use that Pages URL; it uses the jsDelivr GitHub URL, which changes only when the commit pin changes. `pnpm deploy:server` deploys the production Worker. `pnpm upload` transfers mapped installers to the private bucket through R2's S3-compatible endpoint and is not part of the visitor request flow.
 
-Before release, confirm the Webflow script loads from jsDelivr, the Worker origin is OneTrust-permitted, an eligible form submission returns an opaque link, the Worker streams the file, and blocked email/country/IP cases are refused.
+Before release, confirm both Webflow scripts load from the intended jsDelivr commit, the Worker origin is OneTrust-permitted, a successful form submit leaves `actian-trial-email` in `sessionStorage` on the same-origin thank-you page, an eligible CTA returns an opaque link, the Worker streams the file, unknown `metadata` returns `400` `invalid_file`, a missing object returns `404` `not_found`, and blocked email/country/IP cases are refused. Redeploy the Worker when `packages/server/src/utils/catalog.ts` changes.
