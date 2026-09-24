@@ -186,7 +186,7 @@ The Worker stores canonical R2 object keys only after server-side catalog resolu
 
 ### CORS and OneTrust
 
-The Worker handles `OPTIONS` and permits `GET`, `HEAD`, `POST`, and `OPTIONS` with `Content-Type` and `Accept`. `CORS_ORIGINS` is currently `*`; restrict it in production to the Webflow and Actian origins that host the trial page. The Worker also recognizes `actian.com` and subdomains plus `webflow.io` subdomains.
+The Worker handles `OPTIONS` and permits `GET`, `HEAD`, `POST`, and `OPTIONS` with `Content-Type` and `Accept`. `CORS_ORIGINS` is currently `*`; restrict it in production to the Webflow and Actian origins that host the trial page. The Worker also recognizes `actian.com`, `jaspersoft.com`, and their subdomains, plus `webflow.io` subdomains.
 
 For OneTrust, exempt from automatic blocking or categorize as Strictly Necessary, subject to legal review:
 

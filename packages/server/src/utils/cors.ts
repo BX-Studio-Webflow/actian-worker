@@ -1,3 +1,9 @@
+const ALLOWED_DOMAINS = ['actian.com', 'jaspersoft.com', 'webflow.io'];
+
+function isAllowedHost(hostname: string): boolean {
+	return ALLOWED_DOMAINS.some((domain) => hostname === domain || hostname.endsWith(`.${domain}`));
+}
+
 export function allowedOrigin(request: Request, corsOrigins: string): string | null {
 	const origin = request.headers.get('Origin');
 	const configured = corsOrigins
@@ -18,8 +24,7 @@ export function allowedOrigin(request: Request, corsOrigins: string): string | n
 	}
 
 	try {
-		const { hostname } = new URL(origin);
-		if (hostname === 'actian.com' || hostname.endsWith('.actian.com') || hostname.endsWith('.webflow.io')) {
+		if (isAllowedHost(new URL(origin).hostname)) {
 			return origin;
 		}
 	} catch {
