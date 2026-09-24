@@ -1,18 +1,20 @@
-const EMAIL_STORAGE_KEY = 'actian-trial-email';
+import { COUNTRY_STORAGE_KEY, EMAIL_STORAGE_KEY } from '../shared/session';
+
 const MARKETO_READY_TIMEOUT_MS = 15_000;
 const MARKETO_POLL_INTERVAL_MS = 100;
 
-function storeEmail(email: string): void {
-	const trimmed = email.trim();
+function storeValue(key: string, value: string): void {
+	const trimmed = value.trim();
 	if (trimmed) {
-		sessionStorage.setItem(EMAIL_STORAGE_KEY, trimmed);
+		sessionStorage.setItem(key, trimmed);
 	}
 }
 
 function registerSuccessHandler(): void {
 	window.MktoForms2?.whenReady((form) => {
 		form.onSuccess((values) => {
-			storeEmail(values.Email || values.email || '');
+			storeValue(EMAIL_STORAGE_KEY, values.Email || values.email || '');
+			storeValue(COUNTRY_STORAGE_KEY, values.Country || values.country || '');
 			return true;
 		});
 	});

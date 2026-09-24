@@ -35,7 +35,7 @@ Production loads the built files from jsDelivr, pinned to a git commit. After ch
 What the scripts do:
 
 1. `marketo.js` waits up to 15 seconds for `MktoForms2`. The Webflow Marketo app loads `forms2.min.js` asynchronously, so a single check at startup usually runs before Forms 2 exists and never registers a handler.
-2. On form success it stores `Email` (or `email`) in `sessionStorage` under `actian-trial-email`, then returns `true` so Marketo follows its thank-you URL.
+2. On form success it stores `Email` (or `email`) in `sessionStorage` under `actian-trial-email` and `Country` under `actian-trial-country`, then returns `true` so Marketo follows its thank-you URL.
 3. That thank-you URL must be the same origin as the form page. `sessionStorage` does not carry the email onto another host.
 4. `download.js` handles clicks on `[dev-target="download-link"]`. The installer id is the anchor's `metadata` attribute: a catalog alias or a catalog R2 key. The original `href` is left in place and is only followed when `metadata` is empty or the script did not load.
 5. The email is read from `sessionStorage`, then from an `Email` / `#Email` / `input[type="email"]` field in the parent document. The thank-you page has no form, so the stored key is required.
@@ -133,7 +133,7 @@ The frontend scripts are TypeScript compiled with esbuild. Webflow loads the com
 
 1. Webflow loads `marketo.js` and `download.js` from jsDelivr at a pinned commit. `download.js` calls `https://actian-trial-downloads.cf-jaspersoft.workers.dev`.
 2. `marketo.js` polls until `MktoForms2` exists (15 seconds, every 100ms), then registers `whenReady` / `onSuccess`. Forms 2 still invokes `whenReady` for a form that is already on the page.
-3. On success the module stores the submitted email in `sessionStorage` under `actian-trial-email` and lets Marketo redirect. The thank-you page must be the same origin.
+3. On success the module stores the submitted email in `sessionStorage` under `actian-trial-email` and the submitted country under `actian-trial-country`, then lets Marketo redirect. The thank-you page must be the same origin. `download.js` blocks the download when that country is `ru`, `sy`, `ir`, `kp`, `by`, `cu`, `cn`, `mm`, `ua`, or `ve`, or the matching Marketo label (`Russia`, `Syria`, `Iran`, `Korea, North`, `Belarus`, `Cuba`, `China`, `Myanmar`, `Ukraine`, `Venezuela`).
 4. A visitor clicks an anchor matching `[dev-target="download-link"]`.
 5. The module reads `metadata` for the file id. If `metadata` is present it cancels the click. If it is missing, the original `href` is left alone and an error is shown.
 6. The module reads the email from session storage, then from a parent-document email field. If no email is available, it shows "Please submit the trial form before downloading." and does not call the Worker.
@@ -207,4 +207,4 @@ Generate migrations with `pnpm --filter @actian/server db:generate`. Apply the c
 
 `pnpm deploy:frontend` publishes the compiled assets to Cloudflare Pages (`actian-frontend-assets`). The Webflow page does not use that Pages URL; it uses the jsDelivr GitHub URL, which changes only when the commit pin changes. `pnpm deploy:server` deploys the production Worker. `pnpm upload` transfers mapped installers to the private bucket through R2's S3-compatible endpoint and is not part of the visitor request flow.
 
-Before release, confirm both Webflow scripts load from the intended jsDelivr commit, the Worker origin is OneTrust-permitted, a successful form submit leaves `actian-trial-email` in `sessionStorage` on the same-origin thank-you page, an eligible CTA returns an opaque link, the Worker streams the file, unknown `metadata` returns `400` `invalid_file`, a missing object returns `404` `not_found`, and blocked email/country/IP cases are refused. Redeploy the Worker when `packages/server/src/utils/catalog.ts` changes.
+Before release, confirm both Webflow scripts load from the intended jsDelivr commit, the Worker origin is OneTrust-permitted, a successful form submit leaves `actian-trial-email` and `actian-trial-country` in `sessionStorage` on the same-origin thank-you page, a blocked country shows the region error and does not request a link, an eligible CTA returns an opaque link, the Worker streams the file, unknown `metadata` returns `400` `invalid_file`, a missing object returns `404` `not_found`, and blocked email/country/IP cases are refused. Redeploy the Worker when `packages/server/src/utils/catalog.ts` changes.
