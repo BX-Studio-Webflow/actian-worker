@@ -1,5 +1,5 @@
 import { requestDownloadLink } from '../shared/api';
-import { COUNTRY_STORAGE_KEY, EMAIL_STORAGE_KEY, isBlockedTrialCountry } from '../shared/session';
+import { COUNTRY_STORAGE_KEY, EMAIL_STORAGE_KEY, isBlockedTrialCountry, isBlockedTrialEmail } from '../shared/session';
 
 const DOWNLOAD_LINK_SELECTOR = '[dev-target="download-link"]';
 const ERROR_WRAPPER_SELECTOR = '[dev-target="error-wrapper"]';
@@ -8,6 +8,7 @@ const ERROR_CANCEL_SELECTOR = '[dev-target="cancel"]';
 const API_ORIGIN = 'https://actian-trial-downloads.cf-jaspersoft.workers.dev';
 
 const COUNTRY_BLOCKED_MESSAGE = 'Downloads are not available in your region.';
+const EMAIL_BLOCKED_MESSAGE = 'Downloads are limited to business email addresses.';
 const THANK_YOU_PATH = /^(.*)\/trial\/thank-you(?:-v9)?\/?$/;
 
 function thankYouTrialPath(): string | null {
@@ -90,6 +91,11 @@ function bindDownloads(): void {
 				return;
 			}
 
+			if (isBlockedTrialEmail(email)) {
+				showError(EMAIL_BLOCKED_MESSAGE);
+				return;
+			}
+
 			if (!email) {
 				console.error('[Download process] No email provided for download');
 				showError('Please submit the trial form before downloading.');
@@ -131,5 +137,7 @@ if (trialPath && !readStoredEmail()) {
 
 	if (isBlockedTrialCountry(readCountry())) {
 		showError(COUNTRY_BLOCKED_MESSAGE);
+	} else if (isBlockedTrialEmail(readStoredEmail())) {
+		showError(EMAIL_BLOCKED_MESSAGE);
 	}
 }
