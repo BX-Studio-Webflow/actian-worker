@@ -1,4 +1,5 @@
-import { HeadObjectCommand, ListObjectsV2Command, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { HeadObjectCommand, ListObjectsV2Command, S3Client } from '@aws-sdk/client-s3';
+import { Upload } from '@aws-sdk/lib-storage';
 import { createReadStream, existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -50,9 +51,18 @@ const LOCAL_UPLOAD_MAP = {
 	'js-jrio-pro-dev_10.0.0_linux_x86_64.zip': '10.0.0/js-jrio-pro_10.0.0_linux_x86_64.zip',
 	'js-jrs_10.0.0_linux_x86_64.run': '10.0.0/js-jrs_10.0.0_linux_x86_64.run',
 	'js-jrio-pro_10.0.0_macos_x86_64.zip': '10.0.0/js-jrio-pro_10.0.0_macos_x86_64.zip',
-	'JasperReports-Server_9.0.0_win_x86_64.exe': '9.0.0/JasperReports-Server_9.0.0_win_x86_64.exe',
-	'JasperReports-Server_9.0.0_linux_x86_64.run': '9.0.0/JasperReports-Server_9.0.0_linux_x86_64.run',
-	'JasperReports-IO_4.0.0_macosx_x86_64.zip': '9.0.0/JasperReports-IO_4.0.0_macosx_x86_64.zip',
+	'js-jrs-dev_9.0.0_win_x86_64.exe': '9.0.0/js-jrs_9.0.0_win_x86_64.exe',
+	'js-jrs-dev_9.0.0_macosx_x86_64.zip': '9.0.0/js-jrs_9.0.0_macosx_x86_64.zip',
+	'js-jrs-dev_9.0.0_linux_x86_64.run': '9.0.0/js-jrs_9.0.0_linux_x86_64.run',
+	'js-jss-dev_9.0.3_windows_x86_64.exe': '9.0.3/js-jss_9.0.3_windows_x86_64.exe',
+	'js-jss-dev_9.0.3_macosx_x86_64.dmg': '9.0.3/js-jss_9.0.3_macosx_x86_64.dmg',
+	'js-jss-dev_9.0.3_linux_x86_64.tgz': '9.0.3/js-jss_9.0.3_linux_x86_64.tgz',
+	'js-jrws-pro-dev_3.0.0_win_x86_64.zip': '3.0.0/js-jrws-pro_3.0.0_win_x86_64.zip',
+	'js-jrws-pro-dev_3.0.0_macosx_x86_64.zip': '3.0.0/js-jrws-pro_3.0.0_macosx_x86_64.zip',
+	'js-jrws-pro-dev_3.0.0_linux_x86_64.zip': '3.0.0/js-jrws-pro_3.0.0_linux_x86_64.zip',
+	'js-jrio-pro-dev_4.0.0_win_x86_64.zip': '4.0.0/js-jrio-pro_4.0.0_win_x86_64.zip',
+	'js-jrio-pro-dev_4.0.0_macosx_x86_64.zip': '4.0.0/js-jrio-pro_4.0.0_macosx_x86_64.zip',
+	'js-jrio-pro-dev_4.0.0_linux_x86_64.zip': '4.0.0/js-jrio-pro_4.0.0_linux_x86_64.zip',
 };
 
 function walkFiles(dir) {
@@ -186,14 +196,19 @@ async function main() {
 		}
 
 		console.log(`put   ${sizeMb} MB  ${basename(job.path)} -> ${bucket}/${job.key}`);
-		await client.send(
-			new PutObjectCommand({
+		const upload = new Upload({
+			client,
+			params: {
 				Bucket: bucket,
 				Key: job.key,
 				Body: createReadStream(job.path),
 				ContentLength: statSync(job.path).size,
-			}),
-		);
+			},
+			queueSize: 4,
+			partSize: 64 * 1024 * 1024,
+			leavePartsOnError: false,
+		});
+		await upload.done();
 	}
 }
 

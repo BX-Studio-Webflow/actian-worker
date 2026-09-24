@@ -8,6 +8,35 @@ const ERROR_CANCEL_SELECTOR = '[dev-target="cancel"]';
 const API_ORIGIN = 'https://actian-trial-downloads.cf-jaspersoft.workers.dev';
 
 const COUNTRY_BLOCKED_MESSAGE = 'Downloads are not available in your region.';
+const THANK_YOU_PATH = /^(.*)\/trial\/thank-you(?:-v9)?\/?$/;
+
+function thankYouTrialPath(): string | null {
+	const match = window.location.pathname.match(THANK_YOU_PATH);
+	if (!match) {
+		return null;
+	}
+
+	return `${match[1]}/trial`;
+}
+
+function markThankYouUnindexed(): void {
+	if (!thankYouTrialPath()) {
+		return;
+	}
+
+	let robots = document.querySelector<HTMLMetaElement>('meta[name="robots"]');
+	if (!robots) {
+		robots = document.createElement('meta');
+		robots.name = 'robots';
+		document.head.appendChild(robots);
+	}
+
+	robots.content = 'noindex, nofollow';
+}
+
+function readStoredEmail(): string {
+	return sessionStorage.getItem(EMAIL_STORAGE_KEY)?.trim() || '';
+}
 
 function readCountry(): string {
 	return sessionStorage.getItem(COUNTRY_STORAGE_KEY)?.trim() || '';
@@ -91,9 +120,16 @@ function bindErrorCancel(): void {
 	});
 }
 
-bindDownloads();
-bindErrorCancel();
+markThankYouUnindexed();
 
-if (isBlockedTrialCountry(readCountry())) {
-	showError(COUNTRY_BLOCKED_MESSAGE);
+const trialPath = thankYouTrialPath();
+if (trialPath && !readStoredEmail()) {
+	window.location.replace(trialPath);
+} else {
+	bindDownloads();
+	bindErrorCancel();
+
+	if (isBlockedTrialCountry(readCountry())) {
+		showError(COUNTRY_BLOCKED_MESSAGE);
+	}
 }
