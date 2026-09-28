@@ -204,6 +204,25 @@ describe('download Worker', () => {
 		expect(lead?.version).toBe('Jaspersoft 10.0 [Jakarta]');
 	});
 
+	it('stores a numeric Marketo lead id from a JSON webhook', async () => {
+		const response = await fetchWorker(
+			new IncomingRequest(`https://downloads.example.com/webhook/marketo?secret=${env.MARKETO_WEBHOOK_SECRET}`, {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({
+					email: 'name@acme.com',
+					leadId: 18917655,
+					firstName: 'Ada',
+					lastName: 'Lovelace',
+				}),
+			}),
+		);
+
+		expect(response.status).toBe(200);
+		const lead = await env.DB.prepare('SELECT marketo_lead_id FROM trial_leads').first<{ marketo_lead_id: string }>();
+		expect(lead?.marketo_lead_id).toBe('18917655');
+	});
+
 	it('correlates Marketo and download requests through one hashed lead', async () => {
 		await putSampleFile();
 		await fetchWorker(

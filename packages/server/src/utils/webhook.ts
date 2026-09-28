@@ -97,8 +97,16 @@ export function readLeadProfile(record: Record<string, unknown>): {
 
 export function findMarketoLeadId(record: Record<string, unknown>): string | undefined {
 	for (const [key, value] of Object.entries(record)) {
-		if (key.replace(/[^a-z]/gi, '').toLowerCase() === 'leadid' && typeof value === 'string' && value.trim()) {
+		if (key.replace(/[^a-z]/gi, '').toLowerCase() !== 'leadid') {
+			continue;
+		}
+
+		if (typeof value === 'string' && value.trim()) {
 			return value.trim();
+		}
+
+		if (typeof value === 'number' && Number.isFinite(value)) {
+			return String(value);
 		}
 	}
 
