@@ -6,6 +6,12 @@ MARKETO_WEBHOOK_SECRET=replace-with-a-long-random-string
 # This must be distinct from MARKETO_WEBHOOK_SECRET.
 LEAD_HASH_SECRET=replace-with-a-long-random-string
 
+# Marketo Lead API, used to write download attribution after a file streams.
+# MARKETO_BASE_URL is the instance REST host, for example https://<munchkin>.mktorest.com
+MARKETO_BASE_URL=
+MARKETO_CLIENT_ID=
+MARKETO_CLIENT_SECRET=
+
 # S3-compatible R2 upload (packages/server/scripts/upload-r2.mjs)
 R2_ACCOUNT_ID=
 R2_ACCESS_KEY_ID=

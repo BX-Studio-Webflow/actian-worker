@@ -11,6 +11,7 @@ export class TrialLeadRepository {
 		email?: string;
 		name?: string;
 		country?: string;
+		cfCountry?: string;
 		marketoLeadId?: string;
 	}): Promise<TrialLead> {
 		const lead = await this.db
@@ -22,6 +23,7 @@ export class TrialLeadRepository {
 					email: input.email ?? sql`${trialLeads.email}`,
 					name: input.name ?? sql`${trialLeads.name}`,
 					country: input.country ?? sql`${trialLeads.country}`,
+					cfCountry: input.cfCountry ?? sql`${trialLeads.cfCountry}`,
 					marketoLeadId: input.marketoLeadId ?? sql`${trialLeads.marketoLeadId}`,
 					updatedAt: sql`(unixepoch())`,
 				},
@@ -38,5 +40,16 @@ export class TrialLeadRepository {
 
 	public findByEmailHash(emailHash: string): Promise<TrialLead | undefined> {
 		return this.db.select().from(trialLeads).where(eq(trialLeads.emailHash, emailHash)).get();
+	}
+
+	public findById(id: number): Promise<TrialLead | undefined> {
+		return this.db.select().from(trialLeads).where(eq(trialLeads.id, id)).get();
+	}
+
+	public setCfCountry(id: number, cfCountry: string): Promise<unknown> {
+		return this.db
+			.update(trialLeads)
+			.set({ cfCountry, updatedAt: sql`(unixepoch())` })
+			.where(eq(trialLeads.id, id));
 	}
 }

@@ -4,6 +4,7 @@ import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import worker from '../src/index';
 import migration from '../src/schema/migrations/0000_icy_chat.sql?raw';
 import leadProfileMigration from '../src/schema/migrations/0001_trial_lead_profile.sql?raw';
+import attributionMigration from '../src/schema/migrations/0002_download_attribution.sql?raw';
 import { FILE_CATALOG } from '../src/utils/catalog';
 import { mergedAllowlist, resolveObjectKey } from '../src/utils/files';
 import { isBlockedCountry, isBlockedEmailDomain, isBlockedIp, normalizeEmail } from '../src/utils/gate';
@@ -40,7 +41,7 @@ async function fetchWorker(request: Request): Promise<Response> {
 }
 
 beforeAll(async () => {
-	for (const source of [migration, leadProfileMigration]) {
+	for (const source of [migration, leadProfileMigration, attributionMigration]) {
 		for (const statement of source.split('--> statement-breakpoint')) {
 			const sql = statement.trim().replace(/;$/, '');
 			if (sql) {
@@ -117,12 +118,22 @@ describe('download Worker', () => {
 		expect(body.file).toBe(FILE_KEY);
 		expect(body.url).toMatch(/\/download\/[A-Za-z0-9_-]{40,}$/);
 
-		const grant = await env.DB.prepare('SELECT requested_file, r2_object_key, status FROM download_grants').first<{
+		const grant = await env.DB.prepare(
+			'SELECT requested_file, r2_object_key, status, issued_country FROM download_grants',
+		).first<{
 			requested_file: string;
 			r2_object_key: string;
 			status: string;
+			issued_country: string;
 		}>();
-		expect(grant).toEqual({ requested_file: FILE_KEY, r2_object_key: FILE_KEY, status: 'active' });
+		expect(grant).toEqual({ requested_file: FILE_KEY, r2_object_key: FILE_KEY, status: 'active', issued_country: 'us' });
+
+		const lead = await env.DB.prepare('SELECT cf_country, country FROM trial_leads').first<{
+			cf_country: string;
+			country: string | null;
+		}>();
+		expect(lead?.cf_country).toBe('us');
+		expect(lead?.country).toBeNull();
 	});
 
 	it('captures the lead path by refusing consumer email downloads without throwing', async () => {
@@ -230,6 +241,12 @@ describe('download Worker', () => {
 		expect(allowed.status).toBe(200);
 		expect(await allowed.text()).toBe(FILE_BODY);
 		expect(allowed.headers.get('content-disposition')).toContain('sample.bin');
+
+		const recorded = await env.DB.prepare('SELECT issued_country, download_country FROM download_grants').first<{
+			issued_country: string;
+			download_country: string;
+		}>();
+		expect(recorded).toEqual({ issued_country: 'us', download_country: 'us' });
 
 		const missing = await fetchWorker(
 			new IncomingRequest('https://downloads.example.com/download/not-a-grant', {

@@ -8,6 +8,147 @@ packages/
   server/     # gated R2 download Worker + S3 upload script
 ```
 
+## System map
+
+Visitors never touch R2. Webflow hosts the pages, Marketo captures the lead, and the Worker is the only thing that can read an installer.
+
+```mermaid
+flowchart TB
+  subgraph browser [Browser]
+    trial["Trial page /trial"]
+    thanks["Thank-you /trial/thank-you or /trial/thank-you-v9"]
+    session["sessionStorage actian-trial-email and actian-trial-country"]
+  end
+
+  subgraph marketoCloud [Marketo]
+    form["Forms 2"]
+    campaign["Smart campaign"]
+  end
+
+  cdn["jsDelivr marketo.js and download.js"]
+
+  subgraph cloudflare [Cloudflare]
+    worker["Worker actian-trial-downloads"]
+    d1["D1 trial_leads, marketo_webhook_events, download_grants"]
+    r2["Private R2 actian-trial-downloads"]
+  end
+
+  operator["Upload script"]
+
+  trial --> cdn
+  thanks --> cdn
+  trial -->|"submit"| form
+  form -->|"onSuccess, same origin"| session
+  form -->|"follow-up URL"| thanks
+  thanks --> session
+  thanks -->|"POST /api/link"| worker
+  worker -->|"GET /download/token"| thanks
+  worker --> d1
+  worker -->|"stream object"| r2
+  campaign -->|"POST /webhook/marketo"| worker
+  operator -->|"S3 API, not the visitor path"| r2
+```
+
+```mermaid
+sequenceDiagram
+  actor Visitor
+  participant Page as Webflow
+  participant Marketo
+  participant Worker
+  participant D1
+  participant R2
+
+  Visitor->>Page: Open /trial
+  Page->>Marketo: Submit the form
+  Marketo-->>Page: onSuccess
+  Page->>Page: Store email and country
+  Marketo-->>Visitor: Redirect to the thank-you page
+  Note over Page: Same origin. noindex. Missing email sends them back to /trial.
+  Visitor->>Page: Click a download CTA
+  Page->>Page: Block a stored blocked country or personal email
+  Page->>Worker: POST /api/link
+  Worker->>Worker: Country, IP, and email gates
+  Worker->>R2: Confirm the catalog object exists
+  Worker->>D1: Upsert the lead and insert a 10-minute grant
+  Worker-->>Page: Opaque /download/token URL
+  Page->>Worker: GET /download/token
+  Worker->>D1: Load the active grant
+  Worker->>R2: Stream the object
+  Worker-->>Visitor: Installer
+  Note over Marketo,D1: The campaign webhook is separate. It can arrive before or after the download.
+  Marketo->>Worker: POST /webhook/marketo
+  Worker->>D1: Save email, name, country, and the full body
+```
+
+```mermaid
+erDiagram
+  trial_leads ||--o{ marketo_webhook_events : "webhook"
+  trial_leads ||--o{ download_grants : "download"
+
+  trial_leads {
+    int id PK
+    text email_hash UK
+    text email
+    text name
+    text country
+    text marketo_lead_id UK
+  }
+
+  marketo_webhook_events {
+    int id PK
+    int trial_lead_id FK
+    text marketo_lead_id
+    json payload
+    text status
+  }
+
+  download_grants {
+    int id PK
+    int trial_lead_id FK
+    text token UK
+    text requested_file
+    text r2_object_key
+    text status
+    int expires_at
+    int downloaded_at
+  }
+```
+
+What each part owns:
+
+| Piece | Role |
+| --- | --- |
+| Webflow `/trial` | Hosts the Marketo form and loads `marketo.js`. |
+| Webflow `/trial/thank-you` and `/trial/thank-you-v9` | Host the OS tabs and load `download.js`. Locale prefixes are kept (`/de/trial/thank-you` sends an empty session back to `/de/trial`). |
+| `marketo.js` | Polls up to 15 seconds for `MktoForms2`, then on success writes `actian-trial-email` and `actian-trial-country`. Returns `true` so Marketo redirects. |
+| `download.js` | On a thank-you path, sets `noindex, nofollow`. With no stored email, replaces the location with the trial page and does not bind downloads. Otherwise blocks a stored blocked country or personal email before `POST /api/link`. |
+| Marketo form | Lead system of record. A personal email is still submitted here; the thank-you page and the Worker refuse the file. |
+| Marketo webhook | Server-to-server `POST /webhook/marketo`. JSON token encoding must not quote tokens, because Marketo adds the quotes. The body needs an `email` field. `country` is stored only when the template sends `{{lead.Country}}`. |
+| Worker | Gates the request, resolves `metadata` through the catalog, writes D1, and streams R2. The download URL is an opaque D1 token, not an R2 presigned URL. Default life is 600 seconds. |
+| D1 `trial_leads` | One person. `email_hash` is HMAC-SHA-256 of the lowercased email. `email`, `name`, and `country` come from the webhook (`country` only when the template sends it). `cf_country` is the latest Cloudflare country from a link or download request. A download updates `email` and `cf_country` and leaves `country` in place. |
+| D1 `marketo_webhook_events` | One callback. `payload` is the full submitted body. |
+| D1 `download_grants` | One issued link. `issued_country` is the Cloudflare country on `POST /api/link`. `download_country` is the Cloudflare country when the file streams. |
+| R2 | Private bucket. The browser cannot read it. Operators upload with `pnpm upload`. |
+| jsDelivr | Serves the committed `packages/frontend/dist` files, pinned to a git commit. A local rebuild is not live until that pin changes. |
+
+Gates, in the order a visitor hits them:
+
+| Check | Where | Result |
+| --- | --- | --- |
+| Thank-you page with no stored email | `download.js` | Redirect to the trial page. |
+| Form country `ru`, `sy`, `ir`, `kp`, `by`, `cu`, `cn`, `mm`, `ua`, `ve`, or the matching Marketo name | `download.js`, on load and on click | "Downloads are not available in your region." No `/api/link` call. |
+| Personal email domain | `download.js`, on load and on click | "Downloads are limited to business email addresses." No `/api/link` call. |
+| Cloudflare country and IP | Worker, on `/api/link` and `/download/:token` | `403` `country_blocked` or `ip_blocked`. Empty country is not blocked. `BLOCKED_IPS` is empty at launch. |
+| Email domain | Worker, on `/api/link` only | `403` `email_blocked`. |
+| Unknown `metadata` | Worker | `400` `invalid_file`. |
+| Catalog key missing from R2 | Worker | `404` `not_found`. |
+
+Country on the Worker is `request.cf.country`, then `CF-IPCountry`. That value is stored as `download_grants.issued_country` when the link is issued and as `download_grants.download_country` when the file streams. The latest of those is also `trial_leads.cf_country`. It does not replace `trial_leads.country`, which stays the webhook country. IP is `CF-Connecting-IP`, then the first `X-Forwarded-For` address. The form country in `sessionStorage` is a second check in the browser; it is not sent to `/api/link`.
+
+When the file streams, the Worker updates the Marketo lead with `updateOnly` on email, if `MARKETO_BASE_URL`, `MARKETO_CLIENT_ID`, and `MARKETO_CLIENT_SECRET` are set. `requested_file` goes to `ESD_Download_Marketo__c`, the R2 file name goes to `flexField1`, and the download time goes to `ESD_Download_Date__c`. The Marketo call does not block the file. Those three lead fields keep the latest download.
+
+CORS echoes the request origin when `CORS_ORIGINS` is `*`. When that list is restricted, the Worker still allows `actian.com`, `jaspersoft.com`, `webflow.io`, and their subdomains.
+
 ## How this wires to the Webflow page
 
 The thank-you page is OS tabs (Windows / Mac / Linux) with four download CTAs each. Two page scripts handle the flow. Local dev serves them from esbuild:
@@ -109,7 +250,7 @@ The script walks `packages/server/downloads/`, skips the Google Drive wrapper zi
 | Country | Block `ru`, `sy`, `ir`, `kp`, `by`, `cu`, `cn`, `mm`, `ua`, `ve` |
 | IP | Capability present; no IPs blocked at launch |
 
-Marketo still captures the lead before the download is allowed or refused.
+Marketo still captures the lead on form submit. The thank-you page and the Worker refuse the installer afterward.
 
 ## Commands
 
@@ -127,7 +268,7 @@ Marketo still captures the lead before the download is allowed or refused.
 
 The solution replaces direct trial-download links with a gated, short-lived download flow. Installers live in a private Cloudflare R2 bucket and can only be downloaded through a Cloudflare Worker.
 
-The frontend scripts are TypeScript compiled with esbuild. Webflow loads the committed `packages/frontend/dist` files through jsDelivr's GitHub CDN. The Cloudflare Worker applies access gates, writes short-lived opaque download grants to D1, and streams installer files from its private R2 binding. Marketo remains the form and lead-capture system; authenticated callbacks are correlated through a keyed email hash.
+The diagram and table in [System map](#system-map) are the layout. The scripts are TypeScript compiled with esbuild. Webflow loads the committed `packages/frontend/dist` files through jsDelivr's GitHub CDN. The Worker applies access gates, writes short-lived opaque download grants to D1, and streams installer files from its private R2 binding. Marketo remains the form and lead-capture system. The same person is one `trial_leads` row, matched by the keyed email hash.
 
 ### Browser request flow
 
@@ -166,7 +307,7 @@ Each download CTA needs `dev-target="download-link"` and a `metadata` value that
 | `/health` | `GET` | Returns `{ "ok": true, "status": "ok" }` for a health check. |
 | `/api/link` | `POST` | Validates the file and requester, then creates an opaque D1-backed download grant. |
 | `/download/:token` | `GET`, `HEAD` | Resolves an active grant and streams the private R2 object. |
-| `/webhook/marketo` | `POST` | Persists authenticated callback metadata for attribution. Server-to-server only. |
+| `/webhook/marketo` | `POST` | Stores the callback body and the lead's email, name, and country. Server-to-server only. Not a download gate. |
 
 `/api/link` rejects malformed JSON bodies larger than 8 KiB, invalid email addresses, blocked emails/countries/IPs, and unknown files. It first verifies the R2 object exists, then stores the requested file and canonical R2 key in a D1 grant. The URL lifetime defaults to 600 seconds and is configurable with `LINK_TTL_SECONDS`.
 

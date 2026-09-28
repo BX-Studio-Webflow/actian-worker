@@ -11,6 +11,7 @@ export class DownloadGrantRepository {
 		token: string;
 		requestedFile: string;
 		r2ObjectKey: string;
+		issuedCountry?: string;
 		expiresAt: Date;
 	}): Promise<DownloadGrant> {
 		const grant = await this.db.insert(downloadGrants).values(input).returning().get();
@@ -25,10 +26,14 @@ export class DownloadGrantRepository {
 		return this.db.select().from(downloadGrants).where(eq(downloadGrants.token, token)).get();
 	}
 
-	public markDownloaded(id: number): Promise<unknown> {
+	public markDownloaded(id: number, downloadedAt: Date, downloadCountry?: string): Promise<unknown> {
 		return this.db
 			.update(downloadGrants)
-			.set({ downloadedAt: new Date(), updatedAt: sql`(unixepoch())` })
+			.set({
+				downloadedAt,
+				downloadCountry: downloadCountry || sql`${downloadGrants.downloadCountry}`,
+				updatedAt: sql`(unixepoch())`,
+			})
 			.where(eq(downloadGrants.id, id));
 	}
 }

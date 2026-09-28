@@ -16,6 +16,7 @@ export const trialLeads = sqliteTable(
 		email: text('email'),
 		name: text('name'),
 		country: text('country'),
+		cfCountry: text('cf_country'),
 		marketoLeadId: text('marketo_lead_id'),
 		createdAt,
 		updatedAt,
@@ -58,6 +59,8 @@ export const downloadGrants = sqliteTable(
 		token: text('token').notNull(),
 		requestedFile: text('requested_file').notNull(),
 		r2ObjectKey: text('r2_object_key').notNull(),
+		issuedCountry: text('issued_country'),
+		downloadCountry: text('download_country'),
 		status: text('status', { enum: ['active', 'revoked'] })
 			.notNull()
 			.default('active'),

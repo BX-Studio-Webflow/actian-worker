@@ -5,7 +5,8 @@ import type { AppEnv } from '../types';
 import { DEFAULT_LINK_TTL_SECONDS, MAX_JSON_BODY_BYTES, parseAllowlist, parseCsvList, parsePositiveInt } from '../utils/config';
 import { jsonError, jsonOk, streamDownload } from '../utils/download';
 import { mergedAllowlist, resolveObjectKey } from '../utils/files';
-import { evaluateEmailGate, evaluateRequestGate } from '../utils/gate';
+import { evaluateEmailGate, evaluateRequestGate, getClientCountry } from '../utils/gate';
+import { pushDownloadAttribution } from '../utils/marketo-attribution';
 import { downloadLinkRequestSchema } from '../validators/download';
 
 export async function issueDownloadLink(context: Context<AppEnv>): Promise<Response> {
@@ -45,6 +46,7 @@ export async function issueDownloadLink(context: Context<AppEnv>): Promise<Respo
 		requestedFile: body.file,
 		r2ObjectKey: objectKey,
 		ttlSeconds: ttl,
+		cfCountry: getClientCountry(context.req.raw),
 	});
 	const downloadUrl = new URL(`/download/${grant.token}`, context.req.url).toString();
 
@@ -73,7 +75,8 @@ export async function download(context: Context<AppEnv>): Promise<Response> {
 		return jsonError(401, 'invalid_token', 'Download link is invalid or expired.');
 	}
 
-	await service.markDownloaded(grant.id);
+	const attribution = await service.recordDownload(grant, getClientCountry(context.req.raw));
+	context.executionCtx.waitUntil(pushDownloadAttribution(context.env, attribution));
 	return streamDownload(context.env.DOWNLOADS, grant.r2ObjectKey, context.req.raw);
 }
 

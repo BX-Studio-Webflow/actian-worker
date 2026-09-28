@@ -15,9 +15,14 @@ export class DownloadService {
 		requestedFile: string;
 		r2ObjectKey: string;
 		ttlSeconds: number;
+		cfCountry?: string;
 	}): Promise<DownloadGrant> {
 		const emailHash = await hashEmail(input.email, this.hashSecret);
-		const lead = await this.trialLeads.upsert({ emailHash, email: input.email.trim() });
+		const lead = await this.trialLeads.upsert({
+			emailHash,
+			email: input.email.trim(),
+			cfCountry: input.cfCountry || undefined,
+		});
 		const expiresAt = new Date(Date.now() + input.ttlSeconds * 1000);
 
 		return this.downloadGrants.create({
@@ -25,6 +30,7 @@ export class DownloadService {
 			token: createOpaqueToken(),
 			requestedFile: input.requestedFile,
 			r2ObjectKey: input.r2ObjectKey,
+			issuedCountry: input.cfCountry || undefined,
 			expiresAt,
 		});
 	}
@@ -38,7 +44,31 @@ export class DownloadService {
 		return grant;
 	}
 
-	public markDownloaded(grantId: number): Promise<unknown> {
-		return this.downloadGrants.markDownloaded(grantId);
+	public async recordDownload(grant: DownloadGrant, cfCountry: string): Promise<DownloadAttribution | null> {
+		const downloadedAt = new Date();
+		await this.downloadGrants.markDownloaded(grant.id, downloadedAt, cfCountry || undefined);
+		if (cfCountry) {
+			await this.trialLeads.setCfCountry(grant.trialLeadId, cfCountry);
+		}
+
+		const lead = await this.trialLeads.findById(grant.trialLeadId);
+		if (!lead?.email) {
+			return null;
+		}
+
+		const fileName = grant.r2ObjectKey.split('/').pop() || grant.r2ObjectKey;
+		return {
+			email: lead.email,
+			downloadName: grant.requestedFile,
+			fileName,
+			downloadedAt,
+		};
 	}
+}
+
+export interface DownloadAttribution {
+	email: string;
+	downloadName: string;
+	fileName: string;
+	downloadedAt: Date;
 }
