@@ -180,9 +180,9 @@ The Worker applies country and IP checks on both `/api/link` and `/download`. Co
 
 Email is validated and gated on `/api/link`. The default policy rejects consumer/free-mail domains; `EXTRA_BLOCKED_EMAIL_LABELS` can extend that list.
 
-The Worker stores canonical R2 object keys only after server-side catalog resolution and R2 existence checks. `LEAD_HASH_SECRET` keys HMAC-SHA-256 email hashes used to correlate Marketo callbacks and download requests without storing raw email addresses. A missing secret fails closed with a configuration error.
+The Worker stores canonical R2 object keys only after server-side catalog resolution and R2 existence checks. `LEAD_HASH_SECRET` keys HMAC-SHA-256 email hashes used to correlate Marketo callbacks and download requests. `trial_leads` also stores the raw email, plus the name and country when the webhook sends them. A missing secret fails closed with a configuration error.
 
-`/webhook/marketo` is not a download gate. It requires `MARKETO_WEBHOOK_SECRET` in `X-Webhook-Secret` or a `secret` query parameter, then records authenticated callbacks in D1. It retains the callback's field names and lead ID, not raw email or submitted field values. Prefer the header so the secret is not placed in URLs or logs.
+`/webhook/marketo` is not a download gate. It requires `MARKETO_WEBHOOK_SECRET` in `X-Webhook-Secret` or a `secret` query parameter, then records the authenticated callback in D1. The event row keeps the full submitted body. The lead row keeps the email, name, and country from that body. Prefer the header so the secret is not placed in URLs or logs.
 
 ### CORS and OneTrust
 

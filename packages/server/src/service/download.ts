@@ -17,7 +17,7 @@ export class DownloadService {
 		ttlSeconds: number;
 	}): Promise<DownloadGrant> {
 		const emailHash = await hashEmail(input.email, this.hashSecret);
-		const lead = await this.trialLeads.upsert(emailHash);
+		const lead = await this.trialLeads.upsert({ emailHash, email: input.email.trim() });
 		const expiresAt = new Date(Date.now() + input.ttlSeconds * 1000);
 
 		return this.downloadGrants.create({

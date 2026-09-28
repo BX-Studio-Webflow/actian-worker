@@ -53,14 +53,31 @@ function parseMarketoPayload(text: string, contentType: string): Record<string, 
 }
 
 function findEmail(record: Record<string, unknown>): string {
+	return fieldValue(record, ['email', 'emailaddress']);
+}
+
+function fieldValue(record: Record<string, unknown>, names: string[]): string {
 	for (const [key, value] of Object.entries(record)) {
 		const normalizedKey = key.replace(/[^a-z]/gi, '').toLowerCase();
-		if ((normalizedKey === 'email' || normalizedKey === 'emailaddress') && typeof value === 'string' && value.trim()) {
-			return value;
+		if (names.includes(normalizedKey) && typeof value === 'string' && value.trim()) {
+			return value.trim();
 		}
 	}
 
 	return '';
+}
+
+export function readLeadProfile(record: Record<string, unknown>): { name?: string; country?: string } {
+	const first = fieldValue(record, ['firstname']);
+	const last = fieldValue(record, ['lastname']);
+	const combined = [first, last].filter(Boolean).join(' ');
+	const name = combined || fieldValue(record, ['name', 'fullname']);
+	const country = fieldValue(record, ['country', 'countryname']);
+
+	return {
+		name: name || undefined,
+		country: country || undefined,
+	};
 }
 
 export function findMarketoLeadId(record: Record<string, unknown>): string | undefined {

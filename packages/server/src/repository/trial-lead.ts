@@ -6,14 +6,23 @@ import { schema, type TrialLead, trialLeads } from '../schema/schema';
 export class TrialLeadRepository {
 	public constructor(private readonly db: DrizzleD1Database<typeof schema>) {}
 
-	public async upsert(emailHash: string, marketoLeadId?: string): Promise<TrialLead> {
+	public async upsert(input: {
+		emailHash: string;
+		email?: string;
+		name?: string;
+		country?: string;
+		marketoLeadId?: string;
+	}): Promise<TrialLead> {
 		const lead = await this.db
 			.insert(trialLeads)
-			.values({ emailHash, marketoLeadId })
+			.values(input)
 			.onConflictDoUpdate({
 				target: trialLeads.emailHash,
 				set: {
-					marketoLeadId: marketoLeadId ?? sql`${trialLeads.marketoLeadId}`,
+					email: input.email ?? sql`${trialLeads.email}`,
+					name: input.name ?? sql`${trialLeads.name}`,
+					country: input.country ?? sql`${trialLeads.country}`,
+					marketoLeadId: input.marketoLeadId ?? sql`${trialLeads.marketoLeadId}`,
 					updatedAt: sql`(unixepoch())`,
 				},
 			})

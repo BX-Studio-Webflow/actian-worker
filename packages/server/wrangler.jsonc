@@ -6,8 +6,8 @@
  * link issuance and download. LEAD_HASH_SECRET must be set with:
  *   wrangler secret put LEAD_HASH_SECRET --env production
  *
- * POST /webhook/marketo persists authenticated callback metadata for
- * attribution (no gating applied). MARKETO_WEBHOOK_SECRET must be set with:
+ * POST /webhook/marketo persists the callback body and the lead's email,
+ * name, and country (no gating applied). MARKETO_WEBHOOK_SECRET must be set with:
  *   wrangler secret put MARKETO_WEBHOOK_SECRET --env production
  */
 {

@@ -13,6 +13,9 @@ export const trialLeads = sqliteTable(
 	{
 		id: integer('id').primaryKey({ autoIncrement: true }),
 		emailHash: text('email_hash').notNull(),
+		email: text('email'),
+		name: text('name'),
+		country: text('country'),
 		marketoLeadId: text('marketo_lead_id'),
 		createdAt,
 		updatedAt,

@@ -3,6 +3,7 @@ import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import worker from '../src/index';
 import migration from '../src/schema/migrations/0000_icy_chat.sql?raw';
+import leadProfileMigration from '../src/schema/migrations/0001_trial_lead_profile.sql?raw';
 import { FILE_CATALOG } from '../src/utils/catalog';
 import { mergedAllowlist, resolveObjectKey } from '../src/utils/files';
 import { isBlockedCountry, isBlockedEmailDomain, isBlockedIp, normalizeEmail } from '../src/utils/gate';
@@ -39,10 +40,12 @@ async function fetchWorker(request: Request): Promise<Response> {
 }
 
 beforeAll(async () => {
-	for (const statement of migration.split('--> statement-breakpoint')) {
-		const sql = statement.trim().replace(/;$/, '');
-		if (sql) {
-			await env.DB.prepare(sql).run();
+	for (const source of [migration, leadProfileMigration]) {
+		for (const statement of source.split('--> statement-breakpoint')) {
+			const sql = statement.trim().replace(/;$/, '');
+			if (sql) {
+				await env.DB.prepare(sql).run();
+			}
 		}
 	}
 });
@@ -142,7 +145,7 @@ describe('download Worker', () => {
 			new IncomingRequest(`https://downloads.example.com/webhook/marketo?secret=${env.MARKETO_WEBHOOK_SECRET}`, {
 				method: 'POST',
 				headers: { 'content-type': 'application/x-www-form-urlencoded; charset=UTF-8' },
-				body: 'Email+Address=name%40acme.com&leadId=123',
+				body: 'Email+Address=name%40acme.com&leadId=123&firstName=Ada&lastName=Lovelace&Country=Germany',
 				cf: { country: 'US' },
 			}),
 		);
@@ -155,10 +158,24 @@ describe('download Worker', () => {
 			payload: string;
 		}>();
 		expect(event?.marketo_lead_id).toBe('123');
-		expect(event?.payload).toBe('{"fields":["Email Address","leadId"]}');
+		expect(JSON.parse(event?.payload ?? '{}')).toEqual({
+			'Email Address': 'name@acme.com',
+			leadId: '123',
+			firstName: 'Ada',
+			lastName: 'Lovelace',
+			Country: 'Germany',
+		});
 
-		const lead = await env.DB.prepare('SELECT email_hash FROM trial_leads').first<{ email_hash: string }>();
+		const lead = await env.DB.prepare('SELECT email_hash, email, name, country FROM trial_leads').first<{
+			email_hash: string;
+			email: string;
+			name: string;
+			country: string;
+		}>();
 		expect(lead?.email_hash).toMatch(/^[A-Za-z0-9_-]{40,}$/);
+		expect(lead?.email).toBe('name@acme.com');
+		expect(lead?.name).toBe('Ada Lovelace');
+		expect(lead?.country).toBe('Germany');
 	});
 
 	it('correlates Marketo and download requests through one hashed lead', async () => {

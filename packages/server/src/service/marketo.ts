@@ -1,6 +1,7 @@
 import { MarketoWebhookRepository } from '../repository/marketo-webhook';
 import { TrialLeadRepository } from '../repository/trial-lead';
 import { hashEmail } from '../utils/lead';
+import { readLeadProfile } from '../utils/webhook';
 
 export class MarketoService {
 	public constructor(
@@ -11,12 +12,19 @@ export class MarketoService {
 
 	public async receive(input: { email: string; marketoLeadId?: string; payload: Record<string, unknown> }): Promise<void> {
 		const emailHash = await hashEmail(input.email, this.hashSecret);
-		const lead = await this.trialLeads.upsert(emailHash, input.marketoLeadId);
+		const profile = readLeadProfile(input.payload);
+		const lead = await this.trialLeads.upsert({
+			emailHash,
+			email: input.email.trim(),
+			name: profile.name,
+			country: profile.country,
+			marketoLeadId: input.marketoLeadId,
+		});
 
 		await this.webhookEvents.create({
 			trialLeadId: lead.id,
 			marketoLeadId: input.marketoLeadId,
-			payload: { fields: Object.keys(input.payload) },
+			payload: input.payload,
 		});
 	}
 }
