@@ -67,16 +67,31 @@ function fieldValue(record: Record<string, unknown>, names: string[]): string {
 	return '';
 }
 
-export function readLeadProfile(record: Record<string, unknown>): { name?: string; country?: string } {
+export function readLeadProfile(record: Record<string, unknown>): {
+	name?: string;
+	country?: string;
+	company?: string;
+	product?: string;
+	urlOnSubmit?: string;
+	version?: string;
+} {
 	const first = fieldValue(record, ['firstname']);
 	const last = fieldValue(record, ['lastname']);
 	const combined = [first, last].filter(Boolean).join(' ');
 	const name = combined || fieldValue(record, ['name', 'fullname']);
 	const country = fieldValue(record, ['country', 'countryname']);
+	const company = fieldValue(record, ['company', 'companyname']);
+	const product = fieldValue(record, ['product', 'productofinterest', 'productofinterestvc']);
+	const urlOnSubmit = fieldValue(record, ['urlonsubmit']);
+	const version = fieldValue(record, ['version', 'comments']);
 
 	return {
 		name: name || undefined,
 		country: country || undefined,
+		company: company || undefined,
+		product: product || undefined,
+		urlOnSubmit: urlOnSubmit || undefined,
+		version: version || undefined,
 	};
 }
 

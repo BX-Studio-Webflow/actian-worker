@@ -18,6 +18,10 @@ export class MarketoService {
 			email: input.email.trim(),
 			name: profile.name,
 			country: profile.country,
+			company: profile.company,
+			product: profile.product,
+			urlOnSubmit: profile.urlOnSubmit,
+			version: profile.version,
 			marketoLeadId: input.marketoLeadId,
 		});
 

@@ -22,6 +22,13 @@
 			"when": 1790664000000,
 			"tag": "0002_download_attribution",
 			"breakpoints": true
+		},
+		{
+			"idx": 3,
+			"version": "6",
+			"when": 1790667600000,
+			"tag": "0003_trial_lead_form_fields",
+			"breakpoints": true
 		}
 	]
 }

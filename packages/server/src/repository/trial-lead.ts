@@ -12,6 +12,10 @@ export class TrialLeadRepository {
 		name?: string;
 		country?: string;
 		cfCountry?: string;
+		company?: string;
+		product?: string;
+		urlOnSubmit?: string;
+		version?: string;
 		marketoLeadId?: string;
 	}): Promise<TrialLead> {
 		const lead = await this.db
@@ -24,6 +28,10 @@ export class TrialLeadRepository {
 					name: input.name ?? sql`${trialLeads.name}`,
 					country: input.country ?? sql`${trialLeads.country}`,
 					cfCountry: input.cfCountry ?? sql`${trialLeads.cfCountry}`,
+					company: input.company ?? sql`${trialLeads.company}`,
+					product: input.product ?? sql`${trialLeads.product}`,
+					urlOnSubmit: input.urlOnSubmit ?? sql`${trialLeads.urlOnSubmit}`,
+					version: input.version ?? sql`${trialLeads.version}`,
 					marketoLeadId: input.marketoLeadId ?? sql`${trialLeads.marketoLeadId}`,
 					updatedAt: sql`(unixepoch())`,
 				},

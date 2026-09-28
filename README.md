@@ -125,7 +125,7 @@ What each part owns:
 | Marketo form | Lead system of record. A personal email is still submitted here; the thank-you page and the Worker refuse the file. |
 | Marketo webhook | Server-to-server `POST /webhook/marketo`. JSON token encoding must not quote tokens, because Marketo adds the quotes. The body needs an `email` field. `country` is stored only when the template sends `{{lead.Country}}`. |
 | Worker | Gates the request, resolves `metadata` through the catalog, writes D1, and streams R2. The download URL is an opaque D1 token, not an R2 presigned URL. Default life is 600 seconds. |
-| D1 `trial_leads` | One person. `email_hash` is HMAC-SHA-256 of the lowercased email. `email`, `name`, and `country` come from the webhook (`country` only when the template sends it). `cf_country` is the latest Cloudflare country from a link or download request. A download updates `email` and `cf_country` and leaves `country` in place. |
+| D1 `trial_leads` | One person. `email`, `name`, `country`, `company`, `product`, `url_on_submit`, and `version` come from the webhook. `cf_country` is the latest Cloudflare country from a link or download request. A download updates `email` and `cf_country` and leaves the webhook fields in place. |
 | D1 `marketo_webhook_events` | One callback. `payload` is the full submitted body. |
 | D1 `download_grants` | One issued link. `issued_country` is the Cloudflare country on `POST /api/link`. `download_country` is the Cloudflare country when the file streams. |
 | R2 | Private bucket. The browser cannot read it. Operators upload with `pnpm upload`. |

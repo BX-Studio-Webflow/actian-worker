@@ -5,6 +5,7 @@ import worker from '../src/index';
 import migration from '../src/schema/migrations/0000_icy_chat.sql?raw';
 import leadProfileMigration from '../src/schema/migrations/0001_trial_lead_profile.sql?raw';
 import attributionMigration from '../src/schema/migrations/0002_download_attribution.sql?raw';
+import formFieldsMigration from '../src/schema/migrations/0003_trial_lead_form_fields.sql?raw';
 import { FILE_CATALOG } from '../src/utils/catalog';
 import { mergedAllowlist, resolveObjectKey } from '../src/utils/files';
 import { isBlockedCountry, isBlockedEmailDomain, isBlockedIp, normalizeEmail } from '../src/utils/gate';
@@ -41,7 +42,7 @@ async function fetchWorker(request: Request): Promise<Response> {
 }
 
 beforeAll(async () => {
-	for (const source of [migration, leadProfileMigration, attributionMigration]) {
+	for (const source of [migration, leadProfileMigration, attributionMigration, formFieldsMigration]) {
 		for (const statement of source.split('--> statement-breakpoint')) {
 			const sql = statement.trim().replace(/;$/, '');
 			if (sql) {
@@ -156,7 +157,7 @@ describe('download Worker', () => {
 			new IncomingRequest(`https://downloads.example.com/webhook/marketo?secret=${env.MARKETO_WEBHOOK_SECRET}`, {
 				method: 'POST',
 				headers: { 'content-type': 'application/x-www-form-urlencoded; charset=UTF-8' },
-				body: 'Email+Address=name%40acme.com&leadId=123&firstName=Ada&lastName=Lovelace&Country=Germany',
+				body: 'Email+Address=name%40acme.com&leadId=123&firstName=Ada&lastName=Lovelace&Country=Germany&company=Acme&product=Jaspersoft&urlOnSubmit=https%3A%2F%2Fjaspersoft.webflow.io%2Ftrial&version=Jaspersoft+10.0+%5BJakarta%5D',
 				cf: { country: 'US' },
 			}),
 		);
@@ -175,18 +176,32 @@ describe('download Worker', () => {
 			firstName: 'Ada',
 			lastName: 'Lovelace',
 			Country: 'Germany',
+			company: 'Acme',
+			product: 'Jaspersoft',
+			urlOnSubmit: 'https://jaspersoft.webflow.io/trial',
+			version: 'Jaspersoft 10.0 [Jakarta]',
 		});
 
-		const lead = await env.DB.prepare('SELECT email_hash, email, name, country FROM trial_leads').first<{
+		const lead = await env.DB.prepare(
+			'SELECT email_hash, email, name, country, company, product, url_on_submit, version FROM trial_leads',
+		).first<{
 			email_hash: string;
 			email: string;
 			name: string;
 			country: string;
+			company: string;
+			product: string;
+			url_on_submit: string;
+			version: string;
 		}>();
 		expect(lead?.email_hash).toMatch(/^[A-Za-z0-9_-]{40,}$/);
 		expect(lead?.email).toBe('name@acme.com');
 		expect(lead?.name).toBe('Ada Lovelace');
 		expect(lead?.country).toBe('Germany');
+		expect(lead?.company).toBe('Acme');
+		expect(lead?.product).toBe('Jaspersoft');
+		expect(lead?.url_on_submit).toBe('https://jaspersoft.webflow.io/trial');
+		expect(lead?.version).toBe('Jaspersoft 10.0 [Jakarta]');
 	});
 
 	it('correlates Marketo and download requests through one hashed lead', async () => {
