@@ -49,6 +49,15 @@ export async function issueDownloadLink(context: Context<AppEnv>): Promise<Respo
 		cfCountry: getClientCountry(context.req.raw),
 	});
 	const downloadUrl = new URL(`/download/${grant.token}`, context.req.url).toString();
+	const fileName = objectKey.split('/').pop() || objectKey;
+	context.executionCtx.waitUntil(
+		pushDownloadAttribution(context.env, {
+			email: body.email.trim(),
+			downloadName: body.file,
+			fileName,
+			downloadedAt: new Date(),
+		}),
+	);
 
 	return jsonOk({ url: downloadUrl, expiresAt: Math.floor(grant.expiresAt.getTime() / 1000), file: objectKey });
 }
@@ -75,8 +84,7 @@ export async function download(context: Context<AppEnv>): Promise<Response> {
 		return jsonError(401, 'invalid_token', 'Download link is invalid or expired.');
 	}
 
-	const attribution = await service.recordDownload(grant, getClientCountry(context.req.raw));
-	context.executionCtx.waitUntil(pushDownloadAttribution(context.env, attribution));
+	await service.recordDownload(grant, getClientCountry(context.req.raw));
 	return streamDownload(context.env.DOWNLOADS, grant.r2ObjectKey, context.req.raw);
 }
 

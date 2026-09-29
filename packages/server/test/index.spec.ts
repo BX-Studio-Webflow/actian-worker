@@ -310,6 +310,66 @@ describe('download Worker', () => {
 		await direct.json();
 	});
 
+	it('updates the Marketo lead when the download link is issued, not when the file streams', async () => {
+		await putSampleFile();
+		const marketo = env as Env & {
+			MARKETO_BASE_URL: string;
+			MARKETO_CLIENT_ID: string;
+			MARKETO_CLIENT_SECRET: string;
+		};
+		const originalFetch = globalThis.fetch.bind(globalThis);
+		const leadBodies: string[] = [];
+		marketo.MARKETO_BASE_URL = 'https://marketo.example.com';
+		marketo.MARKETO_CLIENT_ID = 'client';
+		marketo.MARKETO_CLIENT_SECRET = 'secret';
+		globalThis.fetch = async (input, init) => {
+			const url = input instanceof Request ? input.url : String(input);
+			if (url.startsWith('https://marketo.example.com/identity/oauth/token')) {
+				return Response.json({ access_token: 'token' });
+			}
+			if (url === 'https://marketo.example.com/rest/v1/leads.json') {
+				leadBodies.push(String(init?.body ?? ''));
+				return Response.json({ success: true, result: [{ status: 'updated' }] });
+			}
+
+			return originalFetch(input, init);
+		};
+
+		try {
+			const issued = await fetchWorker(jsonRequest('/api/link', { email: 'name@acme.com', file: FILE_KEY }));
+			expect(issued.status).toBe(200);
+			expect(leadBodies).toHaveLength(1);
+			const payload = JSON.parse(leadBodies[0]) as {
+				action: string;
+				lookupField: string;
+				input: Array<Record<string, string>>;
+			};
+			expect(payload).toMatchObject({
+				action: 'updateOnly',
+				lookupField: 'email',
+				input: [
+					{
+						email: 'name@acme.com',
+						ESD_Download_Marketo__c: FILE_KEY,
+						flexField1: 'sample.bin',
+					},
+				],
+			});
+			expect(payload.input[0].ESD_Download_Date__c).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
+
+			const issuedBody = (await issued.json()) as { url: string };
+			const download = await fetchWorker(new IncomingRequest(issuedBody.url, { cf: { country: 'US' } }));
+			expect(download.status).toBe(200);
+			expect(await download.text()).toBe(FILE_BODY);
+			expect(leadBodies).toHaveLength(1);
+		} finally {
+			globalThis.fetch = originalFetch;
+			marketo.MARKETO_BASE_URL = '';
+			marketo.MARKETO_CLIENT_ID = '';
+			marketo.MARKETO_CLIENT_SECRET = '';
+		}
+	});
+
 	it('blocks configured IPs when the list is populated', async () => {
 		await putSampleFile();
 		const original = env.BLOCKED_IPS;

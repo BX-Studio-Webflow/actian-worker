@@ -10,7 +10,7 @@
  * name, and country (no gating applied). MARKETO_WEBHOOK_SECRET must be set with:
  *   wrangler secret put MARKETO_WEBHOOK_SECRET --env production
  *
- * A completed download writes ESD_Download_Marketo__c, flexField1, and
+ * A download click writes ESD_Download_Marketo__c, flexField1, and
  * ESD_Download_Date__c back to the Marketo lead. Set:
  *   wrangler secret put MARKETO_CLIENT_ID --env production
  *   wrangler secret put MARKETO_CLIENT_SECRET --env production

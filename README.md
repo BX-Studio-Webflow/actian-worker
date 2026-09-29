@@ -70,6 +70,7 @@ sequenceDiagram
   Worker->>Worker: Country, IP, and email gates
   Worker->>R2: Confirm the catalog object exists
   Worker->>D1: Upsert the lead and insert a 10-minute grant
+  Worker--)Marketo: Update the lead download fields
   Worker-->>Page: Opaque /download/token URL
   Page->>Worker: GET /download/token
   Worker->>D1: Load the active grant
@@ -145,7 +146,7 @@ Gates, in the order a visitor hits them:
 
 Country on the Worker is `request.cf.country`, then `CF-IPCountry`. That value is stored as `download_grants.issued_country` when the link is issued and as `download_grants.download_country` when the file streams. The latest of those is also `trial_leads.cf_country`. It does not replace `trial_leads.country`, which stays the webhook country. IP is `CF-Connecting-IP`, then the first `X-Forwarded-For` address. The form country in `sessionStorage` is a second check in the browser; it is not sent to `/api/link`.
 
-When the file streams, the Worker updates the Marketo lead with `updateOnly` on email, if `MARKETO_BASE_URL`, `MARKETO_CLIENT_ID`, and `MARKETO_CLIENT_SECRET` are set. `requested_file` goes to `ESD_Download_Marketo__c`, the R2 file name goes to `flexField1`, and the download time goes to `ESD_Download_Date__c`. The Marketo call does not block the file. Those three lead fields keep the latest download.
+When the visitor clicks a download button, `POST /api/link` updates the Marketo lead with `updateOnly` on email, if `MARKETO_BASE_URL`, `MARKETO_CLIENT_ID`, and `MARKETO_CLIENT_SECRET` are set. The Marketo call is `waitUntil` work, so the download URL returns without waiting for it. `requested_file` goes to `ESD_Download_Marketo__c`, the R2 file name goes to `flexField1`, and the click time goes to `ESD_Download_Date__c`. Streaming the file does not write those fields again. Those three lead fields keep the latest click.
 
 CORS echoes the request origin when `CORS_ORIGINS` is `*`. When that list is restricted, the Worker still allows `actian.com`, `jaspersoft.com`, `webflow.io`, and their subdomains.
 

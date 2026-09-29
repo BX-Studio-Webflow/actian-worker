@@ -44,25 +44,12 @@ export class DownloadService {
 		return grant;
 	}
 
-	public async recordDownload(grant: DownloadGrant, cfCountry: string): Promise<DownloadAttribution | null> {
+	public async recordDownload(grant: DownloadGrant, cfCountry: string): Promise<void> {
 		const downloadedAt = new Date();
 		await this.downloadGrants.markDownloaded(grant.id, downloadedAt, cfCountry || undefined);
 		if (cfCountry) {
 			await this.trialLeads.setCfCountry(grant.trialLeadId, cfCountry);
 		}
-
-		const lead = await this.trialLeads.findById(grant.trialLeadId);
-		if (!lead?.email) {
-			return null;
-		}
-
-		const fileName = grant.r2ObjectKey.split('/').pop() || grant.r2ObjectKey;
-		return {
-			email: lead.email,
-			downloadName: grant.requestedFile,
-			fileName,
-			downloadedAt,
-		};
 	}
 }
 
